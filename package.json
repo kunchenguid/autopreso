@@ -1,0 +1,34 @@
+{
+  "name": "autopreso",
+  "version": "0.1.1",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "autopreso": "src/cli.js"
+  },
+  "files": [
+    "LICENSE",
+    "public/",
+    "src/"
+  ],
+  "scripts": {
+    "build:moonshine-sidecars": "node ./scripts/build-moonshine-sidecars.js",
+    "dev": "node ./src/cli.js",
+    "prepare:release-packages": "node ./scripts/prepare-release-packages.js",
+    "test": "node --test",
+    "start": "node ./src/cli.js"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "latest",
+    "ai": "latest",
+    "express": "latest",
+    "open": "latest",
+    "ws": "latest",
+    "zod": "latest"
+  },
+  "optionalDependencies": {
+    "@autopreso/moonshine-darwin-arm64": "0.1.1",
+    "@autopreso/moonshine-darwin-x64": "0.1.1"
+  },
+  "devDependencies": {}
+}

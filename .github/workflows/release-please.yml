@@ -1,0 +1,54 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build:moonshine-sidecars
+
+      - run: npm run prepare:release-packages
+
+      - run: npm publish --access public --provenance
+        working-directory: packages/moonshine-darwin-arm64
+
+      - run: npm publish --access public --provenance
+        working-directory: packages/moonshine-darwin-x64
+
+      - run: npm publish --access public --provenance
