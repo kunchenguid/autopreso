@@ -1,0 +1,30 @@
+{
+  "name": "@autopreso/moonshine-darwin-arm64",
+  "version": "0.1.1",
+  "description": "Moonshine transcription sidecar for AutoPreso on macOS arm64.",
+  "license": "MIT",
+  "homepage": "https://github.com/kunchenguid/autopreso#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kunchenguid/autopreso.git",
+    "directory": "packages/moonshine-darwin-arm64"
+  },
+  "bugs": {
+    "url": "https://github.com/kunchenguid/autopreso/issues"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/autopreso-moonshine"
+  ],
+  "bin": {
+    "autopreso-moonshine": "bin/autopreso-moonshine"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
