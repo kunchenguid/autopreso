@@ -1,0 +1,59 @@
+{
+  "name": "autopreso",
+  "version": "0.1.1",
+  "description": "Realtime speech to presentation. Let the whiteboard whiteboard itself.",
+  "license": "MIT",
+  "author": "Kun Chen <kun@kunchenguid.com>",
+  "homepage": "https://github.com/kunchenguid/autopreso#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kunchenguid/autopreso.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kunchenguid/autopreso/issues"
+  },
+  "keywords": [
+    "excalidraw",
+    "whiteboard",
+    "presentation",
+    "voice",
+    "speech-to-text",
+    "ai-agent",
+    "moonshine",
+    "openai",
+    "transcription",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "bin": {
+    "autopreso": "src/cli.js"
+  },
+  "files": [
+    "LICENSE",
+    "public/",
+    "src/"
+  ],
+  "scripts": {
+    "build:moonshine-sidecars": "node ./scripts/build-moonshine-sidecars.js",
+    "dev": "node ./src/cli.js",
+    "prepare:release-packages": "node ./scripts/prepare-release-packages.js",
+    "test": "node --test",
+    "start": "node ./src/cli.js"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.63",
+    "ai": "^6.0.176",
+    "express": "^5.2.1",
+    "open": "^11.0.0",
+    "ws": "^8.20.0",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@autopreso/moonshine-darwin-arm64": "0.1.1",
+    "@autopreso/moonshine-darwin-x64": "0.1.1"
+  },
+  "devDependencies": {}
+}
