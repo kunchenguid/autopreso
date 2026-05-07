@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Local Moonshine development environment
+.autopreso-dev/
+
+# Generated release sidecar binaries
+packages/*/bin/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test and build output
+coverage/
+dist/
+build/
+.nyc_output/
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
