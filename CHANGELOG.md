@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.2...autopreso-v0.1.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* polish UI controls and logging ([#7](https://github.com/kunchenguid/autopreso/issues/7)) ([588548f](https://github.com/kunchenguid/autopreso/commit/588548f2e91c72030183ddc1aec67f5827b0b720))
+
 ## [0.1.2](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.1...autopreso-v0.1.2) (2026-05-08)
 
 
