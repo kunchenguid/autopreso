@@ -38,14 +38,14 @@ test("startServer waits for Moonshine readiness before listening", async () => {
   });
   await Promise.resolve();
   assert.equal(started, false);
-  assert.deepEqual(progressMessages, ["Loading Moonshine medium transcription model..."]);
+  assert.deepEqual(progressMessages, ["Preparing Moonshine medium transcription model..."]);
 
   resolveReady();
   const { httpServer } = await serverPromise;
   assert.equal(started, true);
   assert.deepEqual(progressMessages, [
-    "Loading Moonshine medium transcription model...",
-    "Moonshine medium transcription model is ready.",
+    "Preparing Moonshine medium transcription model...",
+    "Moonshine medium transcription model ready.",
   ]);
 
   await new Promise((resolve) => httpServer.close(resolve));

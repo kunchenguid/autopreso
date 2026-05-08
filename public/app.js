@@ -14,6 +14,27 @@ const MIC_STORAGE_KEY = "autopreso.mic";
 
 const STARTER_STAGING_ELEMENTS = [];
 
+function fullscreenIcon(isFullscreen) {
+  const paths = isFullscreen
+    ? ["M3 6 H6 V3", "M10 3 V6 H13", "M13 10 H10 V13", "M6 13 V10 H3"]
+    : ["M3 6 V3 H6", "M10 3 H13 V6", "M13 10 V13 H10", "M6 13 H3 V10"];
+  return React.createElement(
+    "svg",
+    {
+      width: "1em",
+      height: "1em",
+      viewBox: "0 0 16 16",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.8,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      "aria-hidden": "true",
+    },
+    ...paths.map((d, i) => React.createElement("path", { key: i, d })),
+  );
+}
+
 function loadStoredMic() {
   try {
     const raw = localStorage.getItem(MIC_STORAGE_KEY);
@@ -549,18 +570,6 @@ function App() {
     React.createElement(
       "aside",
       { className: "panel" },
-      isLive
-        ? React.createElement(
-            "button",
-            {
-              className: "fullscreen-toggle",
-              onClick: toggleFullscreen,
-              title: isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen for screen sharing",
-              "aria-label": isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
-            },
-            isFullscreen ? "⤓" : "⤢",
-          )
-        : null,
       React.createElement(
         "div",
         { className: "brand" },
@@ -620,7 +629,7 @@ function App() {
                 onClick: startPreso,
                 disabled: presoStarting,
               },
-              presoStarting ? "Starting..." : "Start preso →",
+              presoStarting ? "Starting..." : "Start Preso →",
             )
           : null,
         isLive
@@ -628,26 +637,40 @@ function App() {
               "div",
               { className: "listen-controls" },
               React.createElement(
-                "button",
-                {
-                  className: `record-toggle ${listening ? "recording" : ""}`,
-                  onClick: toggleListening,
-                  disabled: starting || (warmupState.state === "running" && !listening),
-                  title: warmupState.state === "running"
-                    ? "Waiting for prompt cache to warm up"
-                    : warmupState.state === "exhausted"
-                      ? "Cache didn't fully prime; first turn may be slower"
-                      : undefined,
-                },
-                React.createElement("span", { className: "record-icon" }, listening ? "■" : "●"),
-                " ",
-                listening
-                  ? "Stop"
-                  : starting
-                    ? "Starting..."
-                    : warmupState.state === "running"
-                      ? `Warming up... (${warmupState.attempt} / ${warmupState.maxAttempts})`
-                      : "Start talking",
+                "div",
+                { className: "listen-row" },
+                React.createElement(
+                  "button",
+                  {
+                    className: `record-toggle ${listening ? "recording" : ""}`,
+                    onClick: toggleListening,
+                    disabled: starting || (warmupState.state === "running" && !listening),
+                    title: warmupState.state === "running"
+                      ? "Waiting for prompt cache to warm up"
+                      : warmupState.state === "exhausted"
+                        ? "Cache didn't fully prime; first turn may be slower"
+                        : undefined,
+                  },
+                  React.createElement("span", { className: "record-icon" }, listening ? "■" : "●"),
+                  " ",
+                  listening
+                    ? "Stop"
+                    : starting
+                      ? "Starting..."
+                      : warmupState.state === "running"
+                        ? `Warming up... (${warmupState.attempt} / ${warmupState.maxAttempts})`
+                        : "Start Talking",
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    className: "fullscreen-toggle",
+                    onClick: toggleFullscreen,
+                    title: isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen for screen sharing",
+                    "aria-label": isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
+                  },
+                  fullscreenIcon(isFullscreen),
+                ),
               ),
               warmupState.state === "running" && !listening
                 ? React.createElement(
@@ -657,7 +680,7 @@ function App() {
                       onClick: startAnyway,
                       title: "Skip warmup and start listening now. The first turn may be slower.",
                     },
-                    "Start anyway →",
+                    "Start Anyway →",
                   )
                 : null,
               warmupState.state === "exhausted" && !listening
@@ -681,7 +704,7 @@ function App() {
           },
           resetting ? "Resetting..." : resetConfirming
             ? "Click again to reset"
-            : mode === "staging" ? "Reset staging" : "Reset session",
+            : mode === "staging" ? "Reset Staging" : "Reset Session",
         ),
       ),
       React.createElement(

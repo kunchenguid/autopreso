@@ -119,11 +119,14 @@ body {
   gap: 8px;
 }
 
+.controls button {
+  font-size: 15px;
+  padding: 13px 14px;
+}
+
 .start-preso {
   background: #1f6feb;
   border-color: #1f6feb;
-  font-size: 15px;
-  padding: 13px 14px;
   letter-spacing: 0.01em;
 }
 
@@ -144,19 +147,25 @@ body {
   background: #f3f0e7;
 }
 
+.listen-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.listen-row .record-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
 .fullscreen-toggle {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 10;
   background: transparent;
   color: #6d675e;
-  border: none;
-  padding: 4px 6px;
-  font-size: 16px;
+  border: 1px solid #dedbd2;
+  font-size: 22px;
   line-height: 1;
-  border-radius: 6px;
-  cursor: pointer;
+  flex: 0 0 auto;
+  aspect-ratio: 1;
 }
 
 .fullscreen-toggle:hover:not(:disabled) {
@@ -179,6 +188,7 @@ body {
 .mode-toggle {
   display: inline-flex;
   align-items: stretch;
+  margin-left: auto;
   padding: 2px;
   gap: 0;
   border-radius: 999px;

@@ -54,8 +54,6 @@ async function main() {
   });
 
   console.log(`autopreso listening at ${url}`);
-  console.log(`whiteboard agent: ${agentProvider.provider} ${agentProvider.requestedModel ?? agentProvider.model}`);
-  console.log(`settings file: ${SETTINGS_PATH}`);
 
   if (options.openBrowser) {
     await open(url);
