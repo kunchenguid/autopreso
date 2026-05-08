@@ -31,7 +31,7 @@ broadcast whiteboard:update over WS -> frontend re-renders Excalidraw
 
 - `src/cli.js` parses args, loads `~/.config/autopreso/settings.json` via `settings-store.js`, resolves an agent provider, then calls `startServer`.
 - `src/server.js` is the central hub. It owns the Express + WebSocket server, mounts the static frontend in `public/`, instantiates a `WhiteboardSession`, builds a `TranscriptionManager`, and exposes `runWhiteboardAgent` / `runWhiteboardWarmupOnce` which contain the system prompt and the AI SDK `tool({...})` definitions. `server.js` is large (~1000 LOC) on purpose - keep the agent prompt, message construction, and tool schemas colocated.
-- `public/app.js` is the React frontend. It renders Excalidraw, handles mic capture at 24 kHz, sends audio frames over WS, periodically pushes screenshots back to the server (`whiteboard:screenshot`), and reflects server-pushed scene updates back into Excalidraw. Frontend is plain ES modules loaded via `<script type="importmap">` from esm.sh - no build step.
+- `public/app.js` is the React frontend. It renders Excalidraw, handles mic capture at 24 kHz, sends audio frames over WS, periodically pushes downscaled screenshots back to the server (`whiteboard:screenshot`), and reflects server-pushed scene updates back into Excalidraw. Frontend is plain ES modules loaded via `<script type="importmap">` from esm.sh - no build step.
 
 ### Two-mode session model (`src/whiteboard-session.js`)
 
@@ -40,7 +40,7 @@ The session has two modes that are NOT symmetric:
 - **`staging`** - client-side scratchpad. The server does not track elements in this mode; the frontend owns them. Used to seed the canvas with reference content before going live.
 - **`live`** - the server owns `state.elements` as the source of truth. Audio, screenshots, and user edits all flow into the server, which applies agent edits and broadcasts updates.
 
-Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + screenshot) and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode.
+Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty) and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode.
 
 ### Warmup loop
 

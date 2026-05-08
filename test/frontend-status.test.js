@@ -25,6 +25,23 @@ test("frontend exports and sends whiteboard screenshots over the websocket", () 
   assert.doesNotMatch(appSource, /fitToContent/);
 });
 
+test("frontend downsizes screenshot images before sending them", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /async function downscaleBlobByHalf\(blob\)/);
+  assert.match(appSource, /Math\.floor\(bitmap\.width \/ 2\)/);
+  assert.match(appSource, /Math\.floor\(bitmap\.height \/ 2\)/);
+  assert.match(appSource, /const downscaled = await downscaleBlobByHalf\(blob\);[\s\S]*return await blobToDataUrl\(downscaled\);/);
+  assert.match(appSource, /captureStagingSceneAsImage[\s\S]*const downscaled = await downscaleBlobByHalf\(blob\);/);
+});
+
+test("frontend skips staging screenshot image when staging is empty", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /if \(!Array\.isArray\(elements\) \|\| elements\.length === 0\) \{[\s\S]*return null;[\s\S]*\}/);
+  assert.doesNotMatch(appSource, /PLACEHOLDER_IMAGE/);
+});
+
 test("frontend pushes user-drawn live elements to the server", () => {
   const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
 

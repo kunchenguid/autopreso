@@ -695,6 +695,7 @@ export function logAgentUsage(label, result, extras = {}) {
       cachePct,
       output,
       reasoning,
+      rawUsage: result?.usage ?? null,
       ...extras,
     };
     appendFileSync(CACHE_USAGE_LOG_PATH, JSON.stringify(record) + "\n");
@@ -872,6 +873,7 @@ CRITICAL: one tool call per turn.
 - If you only need to move the viewport (no edits), pass just viewport. If you only need to edit (no viewport change), pass just operations. If you need both, pass both.
 
 You receive a screenshot of the audience's CURRENT VIEWPORT (not the entire infinite canvas) on each turn. Use it to verify your edits actually rendered well: look for clipped labels, overlapping shapes, arrows that miss their targets, and check that the right region is visible. The line-numbered text content is authoritative for positions; the screenshot is for visual sanity checking.
+Attached images (both the staging primer and the per-turn viewport screenshot) are downscaled 2x in each dimension (4x fewer pixels) to save tokens. Do NOT read pixel dimensions off the image as if they were the canvas's real size; trust the line-numbered text for coordinates and only use the image for visual sanity checks.
 The audience's viewport is whatever you last set it to. They cannot see anything outside it. So:
 - After every meaningful canvas update, pass viewport with action "scroll_to_content" AND a focus_ids list naming the 1-5 elements that represent the active talking point. The viewport will center on exactly those IDs. Pass the IDs of what the speaker is talking about RIGHT NOW, not the whole diagram.
 - When the speaker shifts topic to a different region of the canvas, send a new whiteboard_apply with viewport scroll_to_content and the new region's focus_ids.
