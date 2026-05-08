@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -243,7 +244,7 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
     const factoryOptions = buildOptionsForFactory(settings);
     const factory = pickFactory(settings);
     label = newLabel;
-    options.onStatus?.(`Loading ${label} transcription model...`);
+    options.onStatus?.(`Preparing ${label} transcription model...`);
     current = factory({
       sendTranscript,
       queueTranscript,
@@ -251,7 +252,7 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
       env: factoryOptions.env,
     });
     await current.ready();
-    options.onStatus?.(`${label} transcription model is ready.`);
+    options.onStatus?.(`${label} transcription model ready.`);
   }
 
   await applyCurrent();
@@ -566,8 +567,22 @@ function summarizeAgentResult(result) {
   );
 }
 
-const CACHE_USAGE_LOG_PATH = process.env.AUTOPRESO_CACHE_LOG ?? path.join(process.cwd(), "autopreso-cache.log");
-const DEBUG_LOG_PATH = process.env.AUTOPRESO_DEBUG_LOG ?? path.join(process.cwd(), "autopreso-debug.log");
+const DEFAULT_LOG_DIR = path.join(os.homedir(), ".config", "autopreso", "logs");
+const CACHE_USAGE_LOG_PATH = process.env.AUTOPRESO_CACHE_LOG ?? path.join(DEFAULT_LOG_DIR, "cache.log");
+const DEBUG_LOG_PATH = process.env.AUTOPRESO_DEBUG_LOG ?? path.join(DEFAULT_LOG_DIR, "debug.log");
+
+let logDirsEnsured = false;
+function ensureLogDirs() {
+  if (logDirsEnsured) return;
+  for (const file of [CACHE_USAGE_LOG_PATH, DEBUG_LOG_PATH]) {
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+    } catch {
+      // Best effort; the appendFileSync call below will surface a real failure.
+    }
+  }
+  logDirsEnsured = true;
+}
 
 function summarizeMessageForDump(message) {
   if (typeof message?.content === "string") {
@@ -594,6 +609,7 @@ function summarizeMessageForDump(message) {
 }
 
 export function dumpAgentRequest(label, { system, messages, instructions, primerText } = {}) {
+  ensureLogDirs();
   try {
     const record = {
       ts: new Date().toISOString(),
@@ -617,6 +633,7 @@ export function dumpAgentRequest(label, { system, messages, instructions, primer
 }
 
 export function dumpToolCall(toolName, input, sceneIds, result) {
+  ensureLogDirs();
   try {
     const record = {
       ts: new Date().toISOString(),
@@ -681,11 +698,7 @@ function toolDefinitionFingerprintInput(tools) {
 export function logAgentUsage(label, result, extras = {}) {
   const { input, cached, output, reasoning } = extractAgentUsage(result);
   const cachePct = input > 0 ? Math.round((cached / input) * 100) : 0;
-  const fingerprintsSuffix = extras.fingerprints
-    ? ` system=${extras.fingerprints.system} primer=${extras.fingerprints.primer} tools=${extras.fingerprints.tools}`
-    : "";
-  const line = `[cache] ${label.padEnd(7)} input=${input} cached=${cached} (${cachePct}%) output=${output}${reasoning ? ` reasoning=${reasoning}` : ""}${fingerprintsSuffix}`;
-  console.log(line);
+  ensureLogDirs();
   try {
     const record = {
       ts: new Date().toISOString(),

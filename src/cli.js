@@ -54,8 +54,6 @@ async function main() {
   });
 
   console.log(`autopreso listening at ${url}`);
-  console.log(`whiteboard agent: ${agentProvider.provider} ${agentProvider.requestedModel ?? agentProvider.model}`);
-  console.log(`settings file: ${SETTINGS_PATH}`);
 
   if (options.openBrowser) {
     await open(url);
@@ -84,6 +82,8 @@ Environment:
   CODEX_BASE_URL           Seeds the Codex backend URL on first run
   OLLAMA_MODEL             Seeds the Ollama model on first run
   OLLAMA_BASE_URL          Seeds the Ollama base URL on first run
+  AUTOPRESO_CACHE_LOG      Cache usage log path. Default: ~/.config/autopreso/logs/cache.log
+  AUTOPRESO_DEBUG_LOG      Agent debug log path. Default: ~/.config/autopreso/logs/debug.log
 
 Models and providers are configured in the UI after launch. Settings persist at:
   ${SETTINGS_PATH}

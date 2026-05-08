@@ -29,13 +29,11 @@ Stage a few seed elements, hit start, and present.
 ```sh
 $ npx autopreso              # boots the server, opens the browser
 autopreso listening at http://127.0.0.1:3210
-whiteboard agent: openai gpt-5.5
-settings file: /Users/you/.config/autopreso/settings.json
 
 # In the browser:
 # 1. Drop reference materials onto the staging canvas (title, agenda, etc).
 # 2. Pick your microphone, pick a transcription model and an agent model.
-# 3. Click "Start preso" and start talking.
+# 3. Click "Start Preso" and start talking.
 ```
 
 ## Install
@@ -119,15 +117,17 @@ Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `
 
 ### Environment variables
 
-These only seed `settings.json` on first run. Once the file exists, they're ignored - edit the file or use the in-app panel.
+Provider variables only seed `settings.json` on first run. Once the file exists, they're ignored - edit the file or use the in-app panel. Log path variables are read on each process start.
 
-| Variable         | Purpose                                               |
-| ---------------- | ----------------------------------------------------- |
-| `PORT`           | Port to listen on. Default: `3210`.                   |
-| `OPENAI_API_KEY` | Seeds the OpenAI key for both agent and Realtime STT. |
-| `OPENAI_MODEL`   | Seeds the OpenAI agent model.                         |
-| `CODEX_MODEL`    | Seeds the Codex model.                                |
-| `OLLAMA_MODEL`   | Seeds the Ollama model.                               |
+| Variable               | Purpose                                               |
+| ---------------------- | ----------------------------------------------------- |
+| `PORT`                 | Port to listen on. Default: `3210`.                   |
+| `OPENAI_API_KEY`       | Seeds the OpenAI key for both agent and Realtime STT. |
+| `OPENAI_MODEL`         | Seeds the OpenAI agent model.                         |
+| `CODEX_MODEL`          | Seeds the Codex model.                                |
+| `OLLAMA_MODEL`         | Seeds the Ollama model.                               |
+| `AUTOPRESO_CACHE_LOG`  | Cache usage log path. Default: `~/.config/autopreso/logs/cache.log`. |
+| `AUTOPRESO_DEBUG_LOG`  | Agent debug log path. Default: `~/.config/autopreso/logs/debug.log`. |
 
 Local Moonshine transcription ships as an optional native sidecar for `darwin-arm64` and `darwin-x64`. On other platforms, choose OpenAI Realtime in the STT panel.
 

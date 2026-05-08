@@ -59,14 +59,14 @@ test("browser renders the app shell", async (t) => {
   });
 
   const tab = await waitForChromeTab(url);
-  const text = await waitForRenderedText(tab.webSocketDebuggerUrl, "Start preso");
+  const text = await waitForRenderedText(tab.webSocketDebuggerUrl, "Start Preso");
 
-  assert.match(text, /Start preso/);
+  assert.match(text, /Start Preso/);
 
   const controls = await evaluateInTab(tab.webSocketDebuggerUrl, `Array.from(document.querySelectorAll(".controls button")).map((button) => button.textContent.trim())`);
-  // Page starts in staging: Start preso + Reset staging.
-  assert.ok(controls.some((label) => label.includes("Start preso")), `expected a Start preso button, got ${JSON.stringify(controls)}`);
-  assert.ok(controls.some((label) => label.includes("Reset staging")), `expected a Reset staging button, got ${JSON.stringify(controls)}`);
+  // Page starts in staging: Start Preso + Reset staging.
+  assert.ok(controls.some((label) => label.includes("Start Preso")), `expected a Start Preso button, got ${JSON.stringify(controls)}`);
+  assert.ok(controls.some((label) => label.includes("Reset Staging")), `expected a Reset Staging button, got ${JSON.stringify(controls)}`);
 });
 
 async function waitForChromeTab(url) {
