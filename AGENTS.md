@@ -6,6 +6,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 ```sh
 npm run dev                       # run the CLI from source (./src/cli.js)
+npm run typecheck                 # tsc --noEmit
 npm test                          # node --test, runs all tests in test/
 node --test test/server-startup.test.js   # run a single test file
 node --test --test-name-pattern="warmup" test/whiteboard-session.test.js  # filter by test name
@@ -13,7 +14,7 @@ npm run build:moonshine-sidecars  # build Python -> single-binary sidecars for m
 node ./scripts/build-moonshine-sidecars.js darwin-arm64   # build only one target
 ```
 
-There is no separate lint step. CI (`.github/workflows/ci.yml`) runs `npm ci && npm test` on Node 24.
+There is no separate lint step. CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck`, and `npm test` on Node 24.
 
 The `--no-open` flag suppresses auto-launching the browser, which is useful when iterating from a terminal.
 
