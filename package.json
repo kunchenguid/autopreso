@@ -1,6 +1,6 @@
 {
   "name": "autopreso",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Realtime speech to presentation. Let the whiteboard whiteboard itself.",
   "license": "MIT",
   "author": "Kun Chen <kun@kunchenguid.com>",
@@ -52,8 +52,8 @@
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "@autopreso/moonshine-darwin-arm64": "0.1.1",
-    "@autopreso/moonshine-darwin-x64": "0.1.1"
+    "@autopreso/moonshine-darwin-arm64": "0.1.2",
+    "@autopreso/moonshine-darwin-x64": "0.1.2"
   },
   "devDependencies": {}
 }
