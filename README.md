@@ -134,7 +134,7 @@ Local Moonshine transcription ships as an optional native sidecar for `darwin-ar
 ## Credits
 
 - [Excalidraw](https://github.com/excalidraw/excalidraw) - the whiteboard canvas, scene model, and rendering.
-- [Moonshine](https://github.com/usefulsensors/moonshine) by Useful Sensors - the local speech-to-text model that makes the offline path possible.
+- [Moonshine](https://github.com/moonshine-ai/moonshine) the local speech-to-text model that makes the offline path possible.
 - [Vercel AI SDK](https://github.com/vercel/ai) - tool-calling agent loop and provider abstraction.
 
 ## Development
