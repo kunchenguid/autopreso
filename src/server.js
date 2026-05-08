@@ -190,7 +190,7 @@ export async function startServer(options) {
     });
   });
 
-  await new Promise((resolve) => httpServer.listen(options.port, options.host, resolve));
+  await new Promise((resolve) => httpServer.listen(options.port, options.host, () => resolve(undefined)));
   const address = httpServer.address();
   const port = typeof address === "object" && address ? address.port : options.port;
   return {
@@ -608,7 +608,8 @@ function summarizeMessageForDump(message) {
   return { role: message?.role, content: message?.content };
 }
 
-export function dumpAgentRequest(label, { system, messages, instructions, primerText } = {}) {
+export function dumpAgentRequest(label, args) {
+  const { system, messages, instructions, primerText } = args ?? {};
   ensureLogDirs();
   try {
     const record = {
@@ -776,7 +777,7 @@ function withTimeout(promise, timeoutMs, message) {
   return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeout));
 }
 
-export function buildWhiteboardAgentMessages({ agentHistory, elements, latestScreenshot, transcript }) {
+export function buildWhiteboardAgentMessages({ agentHistory, elements, latestScreenshot = null, transcript }) {
   return [
     ...agentHistory,
     { role: "user", content: formatSpeakerTurn(transcript) },

@@ -1,4 +1,4 @@
-export function createTranscriptTurnQueue({ runTurn, debounceMs = 150, isReady = () => true }) {
+export function createTranscriptTurnQueue({ runTurn, debounceMs = 150, isReady = (_text) => true }) {
   let running = false;
   let buffered = [];
   let current = Promise.resolve();

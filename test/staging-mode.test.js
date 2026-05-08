@@ -376,7 +376,7 @@ test("warmup loop transitions to exhausted after maxAttempts without a cache hit
 
 test("POST /api/preso/warmup/cancel short-circuits the loop", async () => {
   let calls = 0;
-  let resolveBlock;
+  let resolveBlock = (..._args) => {};
   const block = new Promise((r) => { resolveBlock = r; });
   const { httpServer, url, state } = await startTestServer({
     warmupMaxAttempts: 8,
@@ -449,7 +449,7 @@ test("Start preso fires a warmup call shaped like a real transcript turn", async
 });
 
 test("transcripts queued during warmup wait for warmup to finish, then run", async () => {
-  let resolveWarmup;
+  let resolveWarmup = (..._args) => {};
   const warmupBlocker = new Promise((resolve) => { resolveWarmup = resolve; });
   const calls = [];
   // A warmup call sends [primer, warmup_user_msg] (2 messages, no assistant).
@@ -491,7 +491,7 @@ test("transcripts queued during warmup wait for warmup to finish, then run", asy
 });
 
 test("multiple transcripts queued during warmup are batched into a single follow-up turn", async () => {
-  let resolveWarmup;
+  let resolveWarmup = (..._args) => {};
   const warmupBlocker = new Promise((resolve) => { resolveWarmup = resolve; });
   const calls = [];
   // A warmup call sends [primer, warmup_user_msg] (2 messages, no assistant).
@@ -533,7 +533,7 @@ test("multiple transcripts queued during warmup are batched into a single follow
 });
 
 test("warmup broadcasts agent:status thinking while running, idle when done", async () => {
-  let resolveWarmup;
+  let resolveWarmup = (..._args) => {};
   const warmupBlocker = new Promise((resolve) => { resolveWarmup = resolve; });
   const { httpServer, url } = await startTestServer({
     generateTextFn: async (opts) => {

@@ -64,7 +64,7 @@ test("createSettingsStore prefers Codex agent whenever Codex CLI auth is availab
   const store = createSettingsStore({
     filePath: await tempPath(),
     env: { OPENAI_API_KEY: "sk-env", OLLAMA_MODEL: "llama3" },
-    readCodexAuth: () => ({ accessToken: "codex-token" }),
+    readCodexAuth: () => ({ tokens: {}, accessToken: "codex-token", refreshToken: null, accountId: null }),
   });
   const settings = await store.load();
   assert.equal(settings.agent.provider, "codex");

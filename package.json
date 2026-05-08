@@ -41,7 +41,8 @@
     "dev": "node ./src/cli.js",
     "prepare:release-packages": "node ./scripts/prepare-release-packages.js",
     "test": "node --test",
-    "start": "node ./src/cli.js"
+    "start": "node ./src/cli.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.63",
@@ -55,5 +56,10 @@
     "@autopreso/moonshine-darwin-arm64": "0.1.3",
     "@autopreso/moonshine-darwin-x64": "0.1.3"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.2",
+    "@types/ws": "^8.18.1",
+    "typescript": "^6.0.3"
+  }
 }
