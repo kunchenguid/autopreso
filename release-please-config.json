@@ -2,16 +2,32 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
+  "separate-pull-requests": false,
   "packages": {
     ".": {
       "release-type": "node",
       "package-name": "autopreso",
+      "component": "autopreso",
+      "exclude-paths": [
+        "packages/moonshine-darwin-arm64",
+        "packages/moonshine-darwin-x64",
+        "moonshine-sidecar.config.json",
+        "scripts/moonshine-sidecar.py",
+        "scripts/build-moonshine-sidecars.js"
+      ]
+    },
+    "packages/moonshine-darwin-arm64": {
+      "release-type": "node",
+      "package-name": "@autopreso/moonshine-darwin-arm64",
+      "component": "moonshine-sidecars",
+      "include-paths": [
+        "packages/moonshine-darwin-arm64",
+        "packages/moonshine-darwin-x64",
+        "moonshine-sidecar.config.json",
+        "scripts/moonshine-sidecar.py",
+        "scripts/build-moonshine-sidecars.js"
+      ],
       "extra-files": [
-        {
-          "type": "json",
-          "path": "packages/moonshine-darwin-arm64/package.json",
-          "jsonpath": "$.version"
-        },
         {
           "type": "json",
           "path": "packages/moonshine-darwin-x64/package.json",
