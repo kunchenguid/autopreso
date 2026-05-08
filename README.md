@@ -117,7 +117,7 @@ Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `
 
 ### Environment variables
 
-These only seed `settings.json` on first run. Once the file exists, they're ignored - edit the file or use the in-app panel.
+Provider variables only seed `settings.json` on first run. Once the file exists, they're ignored - edit the file or use the in-app panel. Log path variables are read on each process start.
 
 | Variable               | Purpose                                               |
 | ---------------------- | ----------------------------------------------------- |
