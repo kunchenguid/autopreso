@@ -13,8 +13,6 @@ const MOONSHINE_MODELS = ["tiny", "small", "medium"];
 const MIC_STORAGE_KEY = "autopreso.mic";
 
 const STARTER_STAGING_ELEMENTS = [];
-// 1x1 transparent PNG used when the staging area is empty.
-const PLACEHOLDER_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 function loadStoredMic() {
   try {
@@ -486,14 +484,15 @@ function App() {
     const canvas = document.querySelector("canvas.excalidraw__canvas.static");
     if (!canvas) return null;
     const blob = await canvasToBlob(canvas);
-    return await blobToDataUrl(blob);
+    const downscaled = await downscaleBlobByHalf(blob);
+    return await blobToDataUrl(downscaled);
   }
 
   async function captureStagingSceneAsImage(excalidrawAPI, elements) {
     if (!Array.isArray(elements) || elements.length === 0) {
-      // Empty staging - no scene to render. Use a 1x1 placeholder so the agent
-      // still gets a valid image part in the primer.
-      return PLACEHOLDER_IMAGE;
+      // Empty staging - no scene to render. Skip the image entirely; the
+      // server's primer already drops the image part when this is falsy.
+      return null;
     }
     try {
       const appState = excalidrawAPI.getAppState();
@@ -504,7 +503,8 @@ function App() {
         files,
         mimeType: "image/png",
       });
-      return await blobToDataUrl(blob);
+      const downscaled = await downscaleBlobByHalf(blob);
+      return await blobToDataUrl(downscaled);
     } catch (error) {
       console.warn("Failed to export staging scene, falling back to viewport canvas:", error);
       return captureCanvasDataUrl();
@@ -1227,6 +1227,29 @@ function canvasToBlob(canvas) {
       else reject(new Error("Canvas screenshot export failed."));
     }, "image/png");
   });
+}
+
+// Halve each dimension before sending to the agent. ~4x fewer pixels means
+// ~4x fewer image tokens and a smaller WS payload, while shapes and labels
+// stay legible enough for the model to do visual sanity checks.
+async function downscaleBlobByHalf(blob) {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const w = Math.max(1, Math.floor(bitmap.width / 2));
+    const h = Math.max(1, Math.floor(bitmap.height / 2));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    return await canvasToBlob(canvas);
+  } catch (error) {
+    console.warn("Image downscale failed, sending original:", error);
+    return blob;
+  }
 }
 
 createRoot(document.getElementById("app")).render(React.createElement(App));
