@@ -93,6 +93,9 @@ test("release workflow uses current actions and npm trusted publishing", () => {
   const releaseWorkflow = readFileSync(path.join(rootDir, ".github/workflows/release-please.yml"), "utf8");
   const ciWorkflow = readFileSync(path.join(rootDir, ".github/workflows/ci.yml"), "utf8");
 
+  assert.equal(releaseWorkflow.includes("autopreso_released: ${{ steps.release.outputs.release_created }}"), true);
+  assert.equal(releaseWorkflow.includes(".--release_created"), false);
+  assert.equal(releaseWorkflow.includes("npm install --package-lock-only --ignore-scripts --omit=optional"), true);
   assert.equal(releaseWorkflow.includes("NODE_AUTH_TOKEN"), false);
   assert.equal(releaseWorkflow.includes("NPM_TOKEN"), false);
   assert.equal(releaseWorkflow.includes("id-token: write"), true);
