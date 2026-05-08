@@ -1,0 +1,49 @@
+name: release-please lockfile sync
+
+# release-please bumps package.json + workspace package.json files but only
+# updates the top-level "version" in package-lock.json. The cross-references
+# (root optionalDependencies snapshot, workspace package entries) stay on the
+# old version, which makes `npm ci` reject the lockfile in the publish job.
+# This workflow regenerates the lockfile on the release-please PR so it stays
+# in sync.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-please-lockfile-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit lockfile if it changed
+        run: |
+          set -eu
+          if git diff --quiet package-lock.json; then
+            echo "package-lock.json already in sync."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'chore: sync package-lock.json with release-please bump'
+          git push
