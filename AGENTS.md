@@ -33,6 +33,7 @@ broadcast whiteboard:update over WS -> frontend re-renders Excalidraw
 - `src/cli.js` parses args, loads `~/.config/autopreso/settings.json` via `settings-store.js`, resolves an agent provider, then calls `startServer`.
 - `src/server.js` is the central hub. It owns the Express + WebSocket server, mounts the static frontend in `public/`, instantiates a `WhiteboardSession`, builds a `TranscriptionManager`, and exposes `runWhiteboardAgent` / `runWhiteboardWarmupOnce` which contain the system prompt and the AI SDK `tool({...})` definitions. `server.js` is large (~1000 LOC) on purpose - keep the agent prompt, message construction, and tool schemas colocated.
 - `public/app.js` is the React frontend. It renders Excalidraw, handles mic capture at 24 kHz, sends audio frames over WS, periodically pushes downscaled screenshots back to the server (`whiteboard:screenshot`), and reflects server-pushed scene updates back into Excalidraw. Frontend is plain ES modules loaded via `<script type="importmap">` from esm.sh - no build step.
+- `src/session-cost.js` tracks per-session agent token usage and transcription audio seconds. `server.js` records agent usage after warmup/turn calls, records transcription audio as frames arrive, broadcasts `cost` over WS, and resets the tracker on Start Preso and session reset.
 
 ### Two-mode session model (`src/whiteboard-session.js`)
 
@@ -41,7 +42,9 @@ The session has two modes that are NOT symmetric:
 - **`staging`** - client-side scratchpad. The server does not track elements in this mode; the frontend owns them. Used to seed the canvas with reference content before going live.
 - **`live`** - the server owns `state.elements` as the source of truth. Audio, screenshots, and user edits all flow into the server, which applies agent edits and broadcasts updates.
 
-Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty), extracts staging text/labels as transcription keywords, snapshots saved Agent instructions for the whole preso, and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode and clears the transcription keywords; `POST /api/session/reset` also clears them.
+Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty), extracts staging text/labels as transcription keywords, snapshots saved Agent instructions for the whole preso, resets session cost, and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode and clears the transcription keywords; `POST /api/session/reset` also clears them and resets session cost.
+
+Audio messages carry a browser-generated `sessionId`. `stop`, reset, back-to-staging, and Start Preso invalidate the current session token so late audio frames, queued turns, stale tool executions, and post-turn history appends cannot mutate the next session; cost still records usage already incurred.
 
 ### Warmup loop
 
@@ -49,7 +52,7 @@ Before the user speaks, `startWarmupLoop` repeatedly fires the agent against the
 
 ### Transcript turn queue (`src/transcript-turn-queue.js`)
 
-Transcript chunks are debounced (default 150 ms) and gated by an `isReady` predicate. While a turn is running, additional chunks are buffered and concatenated for the next turn. This means the agent never has more than one in-flight turn, but it always sees the most recent burst of speech in one shot. `isTrivialTranscript` in `whiteboard-session.js` filters out filler-only chunks ("uh", "okay", etc.) so they don't trigger turns on their own.
+Transcript chunks are gated by an `isReady` predicate, but the live session sets queue debounce to `0` because turn boundaries are decided upstream. OpenAI Realtime uses `src/openai-transcription.js` delta-quiet flushing instead of `transcription.completed` events, while Moonshine emits per-chunk commits. While a turn is running, additional chunks are buffered and concatenated for the next turn. This means the agent never has more than one in-flight turn, but it always sees the most recent burst of speech in one shot. `isTrivialTranscript` in `whiteboard-session.js` filters out filler-only chunks ("uh", "okay", etc.) so they don't trigger turns on their own.
 
 ### Whiteboard edit model (`src/whiteboard-tools.js`)
 

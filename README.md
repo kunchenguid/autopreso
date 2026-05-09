@@ -101,6 +101,8 @@ npm start
 
 Settings persist at `~/.config/autopreso/settings.json` and are managed from the in-app status panel.
 Agent instructions are saved automatically from staging, can be up to 100,000 characters, and take effect on the next Start Preso.
+The live Session cost card estimates agent token costs and OpenAI Realtime audio costs for the current presentation, resetting on Start Preso or session reset.
+OpenAI prices use the built-in May 2026 rate table; local providers show `$0.0000`, Codex shows token volume because it routes through your subscription, and unknown models show `n/a`.
 
 ### Defaults on first run
 
