@@ -41,11 +41,11 @@ The session has two modes that are NOT symmetric:
 - **`staging`** - client-side scratchpad. The server does not track elements in this mode; the frontend owns them. Used to seed the canvas with reference content before going live.
 - **`live`** - the server owns `state.elements` as the source of truth. Audio, screenshots, and user edits all flow into the server, which applies agent edits and broadcasts updates.
 
-Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty), extracts staging text/labels as transcription keywords, and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode and clears the transcription keywords; `POST /api/session/reset` also clears them.
+Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty), extracts staging text/labels as transcription keywords, snapshots saved Agent instructions for the whole preso, and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode and clears the transcription keywords; `POST /api/session/reset` also clears them.
 
 ### Warmup loop
 
-Before the user speaks, `startWarmupLoop` repeatedly fires the agent against the staging primer with exponential backoff (`DEFAULT_WARMUP_DELAYS`, max 8 attempts). Its purpose is **prompt cache priming**: after the loop ends, `agentHistory` is forced to `[warmup_user_msg, assistant("UNDERSTOOD")]` so every subsequent turn reuses the same prefix bytes. Do not change this primer-then-fixed-history pattern without understanding the cache implications.
+Before the user speaks, `startWarmupLoop` repeatedly fires the agent against the staging primer and the Agent instructions snapshot with exponential backoff (`DEFAULT_WARMUP_DELAYS`, max 8 attempts). Its purpose is **prompt cache priming**: after the loop ends, `agentHistory` is forced to `[warmup_user_msg, assistant("UNDERSTOOD")]` so every subsequent turn reuses the same prefix bytes. Do not change this primer-then-fixed-history pattern or the per-preso instructions snapshot without understanding the cache implications.
 
 ### Transcript turn queue (`src/transcript-turn-queue.js`)
 
@@ -74,7 +74,7 @@ The active provider is hot-swappable: `applyCurrent()` in `server.js`'s `createT
 
 ### Settings store (`src/settings-store.js`)
 
-Persists to `~/.config/autopreso/settings.json`. The store has a `getSanitized()` method that strips API keys before sending to the frontend - always use that for outbound payloads. Env vars (`OPENAI_API_KEY`, `OPENAI_MODEL`, `OLLAMA_*`, `CODEX_*`) only **seed** the file on first run; once it exists, the file wins and env vars are ignored.
+Persists to `~/.config/autopreso/settings.json`, including `agentInstructions` validated at 100,000 characters. The store has a `getSanitized()` method that strips API keys before sending to the frontend - always use that for outbound payloads. Env vars (`OPENAI_API_KEY`, `OPENAI_MODEL`, `OLLAMA_*`, `CODEX_*`) only **seed** the file on first run; once it exists, the file wins and env vars are ignored.
 
 ## Testing conventions
 
