@@ -113,6 +113,49 @@ body {
   line-height: 1.4;
 }
 
+.agent-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-instructions-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e1e1e;
+}
+
+.agent-instructions-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 84px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1e1e1e;
+  background: #fffdf8;
+  border: 1px solid #dedbd2;
+  border-radius: 6px;
+  padding: 9px 10px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.agent-instructions-input:focus {
+  border-color: #1f6feb;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.18);
+}
+
+.agent-instructions-input::placeholder {
+  color: #a39b8e;
+}
+
+.agent-instructions-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #6d675e;
+}
+
 .controls {
   display: flex;
   flex-direction: column;

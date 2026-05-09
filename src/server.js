@@ -73,7 +73,7 @@ export async function startServer(options) {
     res.json({ ok: true });
   });
 
-  app.post("/api/preso/start", (req, res) => {
+  app.post("/api/preso/start", async (req, res) => {
     const { stagingElements, stagingScreenshot } = req.body ?? {};
     if (!Array.isArray(stagingElements)) {
       return res.status(400).json({ error: "stagingElements (array) is required." });
@@ -82,7 +82,13 @@ export async function startServer(options) {
     const keywords = extractWhiteboardKeywords(stagingElements);
     console.log(`[autopreso] preso/start: ${keywords.length} staging keyword(s) for transcription bias`);
     transcription.setSessionContext({ keywords });
-    state.startPreso({ primerMessage });
+    // Snapshot the user's free-form Agent instructions at start so the cached
+    // system-prompt prefix stays stable for the whole preso. Edits made to
+    // the textarea after Start Preso land on disk but only take effect on the
+    // next Start Preso.
+    const settings = options.settingsStore ? await options.settingsStore.load() : null;
+    const agentInstructions = typeof settings?.agentInstructions === "string" ? settings.agentInstructions : "";
+    state.startPreso({ primerMessage, agentInstructions });
     state.startWarmupLoop({
       runOnce: ({ attempt }) =>
         runWhiteboardWarmupOnce({
@@ -321,7 +327,7 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
   // are text-only across these APIs. This keeps the staging context as a
   // first-class system instruction rather than a stale early user message.
   const primerText = extractPrimerText(state.agentHistory?.[0]);
-  const effectiveSystem = buildEffectiveSystemPrompt(baseSystem, primerText);
+  const effectiveSystem = buildEffectiveSystemPrompt(baseSystem, primerText, state.agentInstructions);
   const messages = primerText ? reshapeMessagesForCodex(rawMessages) : rawMessages;
   options.onAgentEvent?.({ type: "model:start", transcript, system: effectiveSystem, messages, timestamp: new Date().toISOString() });
   const codexInstructions = agentProvider.provider === "codex" ? effectiveSystem : null;
@@ -490,7 +496,7 @@ export async function runWhiteboardWarmupOnce({ state, options, attempt = 1, gen
       ? resolveAgentProviderFromSettings({ settings: await options.settingsStore.load(), env: options.env ?? process.env })
       : defaultWhiteboardAgentProvider(options));
   const primerText = extractPrimerText(state.agentHistory[0]);
-  const effectiveSystem = buildEffectiveSystemPrompt(baseSystem, primerText);
+  const effectiveSystem = buildEffectiveSystemPrompt(baseSystem, primerText, state.agentInstructions);
 
   // Each warmup attempt sends the IDENTICAL prefix [primer, WARMUP_USER_MESSAGE]
   // so attempt N hits the cache that attempt N-1 wrote. We must NOT mutate
@@ -748,9 +754,16 @@ function createWhiteboardAgentProviderOptions(agentProvider, effectiveSystem) {
   };
 }
 
-export function buildEffectiveSystemPrompt(systemPrompt, primerText) {
-  if (!primerText) return systemPrompt;
-  return `${systemPrompt}\n\n${primerText}`;
+export function buildEffectiveSystemPrompt(systemPrompt, primerText, userInstructions = "") {
+  let result = systemPrompt;
+  const trimmedUserInstructions = typeof userInstructions === "string" ? userInstructions.trim() : "";
+  if (trimmedUserInstructions) {
+    result = `${result}\n\nUser instructions:\n${trimmedUserInstructions}`;
+  }
+  if (primerText) {
+    result = `${result}\n\n${primerText}`;
+  }
+  return result;
 }
 
 export function extractPrimerText(primerMessage) {

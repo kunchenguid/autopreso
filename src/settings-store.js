@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   apiKeys: {
     openai: "",
   },
+  agentInstructions: "",
 });
 
 export function createSettingsStore({ filePath, env = process.env, readCodexAuth = readCodexCliAuthSync }) {

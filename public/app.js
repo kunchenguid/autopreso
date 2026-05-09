@@ -69,6 +69,7 @@ function App() {
   const [resetting, setResetting] = React.useState(false);
   // warmupState: { state: "idle"|"running"|"confirmed"|"exhausted"|"cancelled", attempt, maxAttempts }
   const [warmupState, setWarmupState] = React.useState({ state: "idle", attempt: 0, maxAttempts: 8 });
+  const [agentInstructions, setAgentInstructionsValue] = React.useState("");
   const audioSessionRef = React.useRef(null);
   const apiRef = React.useRef(null);
   const wsRef = React.useRef(null);
@@ -82,6 +83,10 @@ function App() {
   const userElementsSyncTimerRef = React.useRef(null);
   const lastSyncedElementsHashRef = React.useRef("");
   const listeningRef = React.useRef(false);
+  // Seed the textarea once from settings, then let the user own it locally so
+  // their keystrokes don't fight the WS settings broadcast we trigger on save.
+  const agentInstructionsSeededRef = React.useRef(false);
+  const agentInstructionsSaveTimerRef = React.useRef(null);
 
   React.useEffect(() => { listeningRef.current = listening; }, [listening]);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -110,8 +115,24 @@ function App() {
       clearTimeout(captionTimerRef.current);
       clearTimeout(resetConfirmTimerRef.current);
       clearTimeout(userElementsSyncTimerRef.current);
+      clearTimeout(agentInstructionsSaveTimerRef.current);
     };
   }, []);
+
+  React.useEffect(() => {
+    if (agentInstructionsSeededRef.current) return;
+    if (!settings || typeof settings.agentInstructions !== "string") return;
+    setAgentInstructionsValue(settings.agentInstructions);
+    agentInstructionsSeededRef.current = true;
+  }, [settings]);
+
+  function handleAgentInstructionsChange(value) {
+    setAgentInstructionsValue(value);
+    clearTimeout(agentInstructionsSaveTimerRef.current);
+    agentInstructionsSaveTimerRef.current = setTimeout(() => {
+      saveSettings({ agentInstructions: value }).catch((err) => setError(err.message));
+    }, 600);
+  }
 
   function handleExcalidrawChange(elements) {
     // Only push user edits to the server while in live mode. In staging the
@@ -757,6 +778,27 @@ function App() {
           }) : null,
         }),
       ),
+      mode === "staging"
+        ? React.createElement(
+            "div",
+            { className: "agent-instructions" },
+            React.createElement("label", { className: "agent-instructions-label", htmlFor: "agent-instructions-input" }, "Agent instructions"),
+            React.createElement("textarea", {
+              id: "agent-instructions-input",
+              className: "agent-instructions-input",
+              value: agentInstructions,
+              onChange: (e) => handleAgentInstructionsChange(e.target.value),
+              placeholder: "Optional. Tell the agent your preferences - e.g. 'Use a tight 4-color palette', 'Prefer drawings over text', 'Be funny'.",
+              rows: 4,
+              spellCheck: true,
+            }),
+            React.createElement(
+              "p",
+              { className: "agent-instructions-hint" },
+              "Saved automatically. Takes effect on next Start Preso.",
+            ),
+          )
+        : null,
       error ? React.createElement("div", { className: "error" }, error) : null,
     ),
   );
