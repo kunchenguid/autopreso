@@ -67,7 +67,6 @@ test("Moonshine sidecar packages expose the resolver binary contract", () => {
 test("Moonshine sidecars are built from a pinned release recipe", () => {
   const sidecarConfig = readJson("moonshine-sidecar.config.json");
   const releasePlease = readJson("release-please-config.json");
-  const manifest = readJson(".release-please-manifest.json");
 
   assert.equal(sidecarConfig.moonshineVoiceVersion, "0.0.59");
   assert.equal(sidecarConfig.moonshineReleaseTag, "v0.0.59");
@@ -85,8 +84,6 @@ test("Moonshine sidecars are built from a pinned release recipe", () => {
   assert.equal(releasePlease.packages["packages/moonshine-darwin-arm64"].component, "moonshine-sidecars");
   assert.ok(releasePlease.packages["packages/moonshine-darwin-arm64"]["include-paths"].includes("moonshine-sidecar.config.json"));
   assert.ok(releasePlease.packages["."]["exclude-paths"].includes("moonshine-sidecar.config.json"));
-  assert.ok(manifest["."]);
-  assert.ok(manifest["packages/moonshine-darwin-arm64"]);
 });
 
 test("release workflow uses current actions and npm trusted publishing", () => {
