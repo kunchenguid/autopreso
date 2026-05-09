@@ -18,8 +18,25 @@ test("root package keeps platform sidecars as optional published packages, not l
   assert.equal(rootPackage.scripts["build:moonshine-sidecars"], "node ./scripts/build-moonshine-sidecars.js");
   assert.equal(rootPackage.scripts["prepare:release-packages"], "node ./scripts/prepare-release-packages.js");
   assert.equal(rootPackage.workspaces, undefined);
-  assert.equal(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-arm64"], rootPackage.version);
-  assert.equal(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-x64"], rootPackage.version);
+  assert.ok(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-arm64"]);
+  assert.ok(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-x64"]);
+});
+
+test("Moonshine sidecar packages share one version, decoupled from autopreso", () => {
+  const armPackage = readJson("packages/moonshine-darwin-arm64/package.json");
+  const x64Package = readJson("packages/moonshine-darwin-x64/package.json");
+  const rootPackage = readJson("package.json");
+
+  // Both sidecar packages must always agree on their version, since they ship
+  // the same binary contract for two architectures and release-please bumps
+  // them in lockstep via the moonshine-sidecars component.
+  assert.equal(armPackage.version, x64Package.version);
+
+  // Root optionalDependencies must pin the exact sidecar version that's
+  // checked into the sidecar package.jsons, otherwise `npm ci` (and the
+  // resolver in src/moonshine-transcription.js) sees a version mismatch.
+  assert.equal(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-arm64"], armPackage.version);
+  assert.equal(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-x64"], x64Package.version);
 });
 
 test("Moonshine sidecar packages expose the resolver binary contract", () => {
@@ -38,10 +55,8 @@ test("Moonshine sidecar packages expose the resolver binary contract", () => {
 
   for (const sidecarPackage of packages) {
     const packageJson = readJson(`${sidecarPackage.dir}/package.json`);
-    const rootPackage = readJson("package.json");
 
     assert.equal(packageJson.name, sidecarPackage.name);
-    assert.equal(packageJson.version, rootPackage.version);
     assert.deepEqual(packageJson.os, ["darwin"]);
     assert.deepEqual(packageJson.cpu, [sidecarPackage.cpu]);
     assert.deepEqual(packageJson.files, ["bin/autopreso-moonshine"]);
@@ -59,13 +74,25 @@ test("Moonshine sidecars are built from a pinned release recipe", () => {
     "packages/moonshine-darwin-arm64",
     "packages/moonshine-darwin-x64",
   ]);
+
+  // release-please runs in monorepo manifest mode with two components: the
+  // root autopreso CLI and the moonshine-sidecars group. The sidecar group
+  // owns the moonshine config and build scripts via include-paths so that
+  // only commits touching those files trigger sidecar version bumps.
   assert.equal(releasePlease.packages["."]["release-type"], "node");
+  assert.equal(releasePlease.packages["."].component, "autopreso");
+  assert.equal(releasePlease.packages["packages/moonshine-darwin-arm64"].component, "moonshine-sidecars");
+  assert.ok(releasePlease.packages["packages/moonshine-darwin-arm64"]["include-paths"].includes("moonshine-sidecar.config.json"));
+  assert.ok(releasePlease.packages["."]["exclude-paths"].includes("moonshine-sidecar.config.json"));
 });
 
 test("release workflow uses current actions and npm trusted publishing", () => {
   const releaseWorkflow = readFileSync(path.join(rootDir, ".github/workflows/release-please.yml"), "utf8");
   const ciWorkflow = readFileSync(path.join(rootDir, ".github/workflows/ci.yml"), "utf8");
 
+  assert.equal(releaseWorkflow.includes("autopreso_released: ${{ steps.release.outputs.release_created }}"), true);
+  assert.equal(releaseWorkflow.includes(".--release_created"), false);
+  assert.equal(releaseWorkflow.includes("npm install --package-lock-only --ignore-scripts --omit=optional"), true);
   assert.equal(releaseWorkflow.includes("NODE_AUTH_TOKEN"), false);
   assert.equal(releaseWorkflow.includes("NPM_TOKEN"), false);
   assert.equal(releaseWorkflow.includes("id-token: write"), true);

@@ -1,11 +1,12 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Commands
 
 ```sh
 npm run dev                       # run the CLI from source (./src/cli.js)
+npm run typecheck                 # tsc --noEmit
 npm test                          # node --test, runs all tests in test/
 node --test test/server-startup.test.js   # run a single test file
 node --test --test-name-pattern="warmup" test/whiteboard-session.test.js  # filter by test name
@@ -13,7 +14,7 @@ npm run build:moonshine-sidecars  # build Python -> single-binary sidecars for m
 node ./scripts/build-moonshine-sidecars.js darwin-arm64   # build only one target
 ```
 
-There is no separate lint step. CI (`.github/workflows/ci.yml`) runs `npm ci && npm test` on Node 24.
+There is no separate lint step. CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck`, and `npm test` on Node 24.
 
 The `--no-open` flag suppresses auto-launching the browser, which is useful when iterating from a terminal.
 
@@ -87,12 +88,25 @@ The system prompt and tool schemas are defined inline in `src/server.js` (search
 
 ## Release process
 
-This repo uses **release-please** (`.github/workflows/release-please.yml`, `release-please-config.json`).
+This repo uses **release-please** in **monorepo manifest mode** (`.github/workflows/release-please.yml`, `release-please-config.json`, `.release-please-manifest.json`).
 
-- Conventional commits drive version bumps. The release PR is `chore(main): release autopreso ...`.
-- The version in `package.json` is mirrored into both `packages/moonshine-darwin-{arm64,x64}/package.json` and the matching `optionalDependencies` entries via release-please's `extra-files`. Don't bump those manually.
-- `CHANGELOG.md` and other release-please artifacts are auto-generated. Per global rules, never hand-edit them.
-- Sidecar binaries are produced by `scripts/build-moonshine-sidecars.js` and must be built on macOS (the script enforces this). `scripts/prepare-release-packages.js` stages them for npm publish.
+Two components version independently:
+
+- **`autopreso`** (root, `.`) - the CLI npm package. Bumps on any conventional commit _except_ those touching the sidecar paths (`packages/moonshine-darwin-*`, `moonshine-sidecar.config.json`, `scripts/moonshine-sidecar.py`, `scripts/build-moonshine-sidecars.js`).
+- **`moonshine-sidecars`** (`packages/moonshine-darwin-arm64`) - the platform sidecar npm packages. Bumps **only** when commits touch the sidecar paths above. The arm64 package is the release-please anchor; its version is mirrored into `packages/moonshine-darwin-x64/package.json` and into both `optionalDependencies` entries in the root `package.json` via `extra-files`. The two sidecar packages always share one version.
+
+Workflow consequences:
+
+- A typical change to `src/`, `public/`, or `test/` only bumps autopreso. The publish job for the sidecar group is skipped, so CI never runs the Python/PyInstaller build path on a regular release.
+- A change to `moonshine-sidecar.config.json` (e.g. bumping `moonshineVoiceVersion`) bumps the sidecars. CI will then build the Python sidecar binaries on `macos-15` (required by recent `moonshine-voice` wheels, which target `macosx_15_0_universal2`) and publish both `@autopreso/moonshine-darwin-{arm64,x64}` packages.
+- A commit that touches both kinds of paths bumps both components in a single release-please PR.
+
+Other notes:
+
+- `CHANGELOG.md` and `.release-please-manifest.json` are auto-generated. Per global rules, never hand-edit them.
+- Sidecar binaries are produced by `scripts/build-moonshine-sidecars.js` and must be built on macOS (the script enforces this).
+- `scripts/prepare-release-packages.js` is now a verification step: it confirms each sidecar's `package.json` version matches the root `optionalDependencies` entry and that the binary exists. Version writing is owned by release-please's `extra-files`, not this script.
+- The published-on-npm sidecar version may lag autopreso; that's by design (pinning the same binary keeps users from re-downloading on every CLI patch).
 
 ## Project status (from README)
 

@@ -13,17 +13,18 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
+      autopreso_released: ${{ steps.release.outputs.release_created }}
+      sidecars_released: ${{ steps.release.outputs['packages/moonshine-darwin-arm64--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  publish:
+  publish-sidecars:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    runs-on: macos-14
+    if: ${{ needs.release-please.outputs.sidecars_released == 'true' }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
 
@@ -37,9 +38,9 @@ jobs:
         with:
           python-version: "3.13"
 
-      - run: npm ci
+      - run: npm install --package-lock-only --ignore-scripts --omit=optional
 
-      - run: npm test
+      - run: npm ci
 
       - run: npm run build:moonshine-sidecars
 
@@ -50,5 +51,27 @@ jobs:
 
       - run: npm publish --access public --provenance
         working-directory: packages/moonshine-darwin-x64
+
+  publish-autopreso:
+    needs: [release-please, publish-sidecars]
+    # publish-sidecars may be skipped (no sidecar release this round); that's fine,
+    # but if it ran and failed we must NOT publish autopreso because its
+    # optionalDependencies would pin a sidecar version that isn't on npm yet.
+    if: ${{ always() && needs.release-please.outputs.autopreso_released == 'true' && (needs.publish-sidecars.result == 'success' || needs.publish-sidecars.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - run: npm install --package-lock-only --ignore-scripts --omit=optional
+
+      - run: npm ci
+
+      - run: npm test
 
       - run: npm publish --access public --provenance

@@ -1,3 +1,4 @@
+// @ts-nocheck - injected fakes for streamText/generateText return simplified shapes that don't satisfy the AI SDK return type.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { WebSocket } from "ws";

@@ -1,3 +1,4 @@
+// @ts-nocheck - hand-rolled EventEmitter is used as a fake Chrome child process; structural types fight here.
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";

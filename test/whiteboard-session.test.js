@@ -230,7 +230,7 @@ test("startWarmupLoop is a no-op if called while already running", async () => {
   const { session, broadcasts } = makeWarmupSession();
   let calls = 0;
   // First invocation: blocks on a promise we control.
-  let release;
+  let release = (..._args) => {};
   const block = new Promise((r) => { release = r; });
   const first = session.startWarmupLoop({
     runOnce: async () => {

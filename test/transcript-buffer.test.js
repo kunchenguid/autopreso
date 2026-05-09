@@ -94,7 +94,7 @@ test("queue idle() force-flushes a not-ready buffer so it always terminates", as
 
 test("queue buffers chunks that arrive during a running turn into one follow-up turn", async () => {
   const turns = [];
-  let releaseFirstTurn;
+  let releaseFirstTurn = (..._args) => {};
   const firstTurnDone = new Promise((resolve) => {
     releaseFirstTurn = resolve;
   });

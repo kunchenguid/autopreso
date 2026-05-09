@@ -142,6 +142,7 @@ Local Moonshine transcription ships as an optional native sidecar for `darwin-ar
 ```sh
 npm install                       # install deps
 npm run dev                       # run the CLI from source
+npm run typecheck                 # tsc --noEmit
 npm test                          # node --test
 npm run build:moonshine-sidecars  # build the Python sidecar binaries
 ```
