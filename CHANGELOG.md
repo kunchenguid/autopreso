@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.4...autopreso-v0.1.5) (2026-05-09)
+
+
+### Features
+
+* add session cost tracking ([#16](https://github.com/kunchenguid/autopreso/issues/16)) ([5341526](https://github.com/kunchenguid/autopreso/commit/5341526ffbfcb6beb6b197c938a3013166b67c71))
+
 ## [0.1.4](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.3...autopreso-v0.1.4) (2026-05-09)
 
 
