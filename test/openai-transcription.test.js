@@ -126,6 +126,31 @@ test("createOpenAITranscription queues the accumulated partial (not message.tran
   assert.deepEqual(queued, ["Hello"]);
 });
 
+test("createOpenAITranscription falls back to completed transcript when no deltas arrived", () => {
+  const socket = createMockSocket();
+  const messages = [];
+  const queued = [];
+  const transcription = createOpenAITranscription({
+    sendTranscript: (m) => messages.push(m),
+    queueTranscript: (t) => queued.push(t),
+    options: { openaiTranscriptionModel: "whisper-1" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("a");
+  socket.emit("open");
+  socket.emit("message", JSON.stringify({
+    type: "conversation.item.input_audio_transcription.completed",
+    transcript: "Hello from completed",
+  }));
+
+  assert.deepEqual(messages, [
+    { type: "transcript:committed", text: "Hello from completed" },
+  ]);
+  assert.deepEqual(queued, ["Hello from completed"]);
+});
+
 test("createOpenAITranscription accumulates partial deltas across one utterance", () => {
   const socket = createMockSocket();
   const messages = [];

@@ -58,6 +58,7 @@ export function createOpenAITranscription({
   let bufferedSinceCommit = false;
   let vocabularyPrompt = "";
   let deltaQuietTimer = null;
+  let lastQueuedTranscript = "";
   const deltaQuietMs = Number.isFinite(options.openaiDeltaQuietMs)
     ? options.openaiDeltaQuietMs
     : DEFAULT_DELTA_QUIET_MS;
@@ -76,6 +77,7 @@ export function createOpenAITranscription({
     const text = partialText.trim();
     if (!text) return;
     partialText = "";
+    lastQueuedTranscript = text;
     sendTranscript({ type: "transcript:committed", text });
     queueTranscript(text);
     // Commit OpenAI's audio buffer so the next utterance's deltas start
@@ -141,11 +143,13 @@ export function createOpenAITranscription({
           // for deltaQuietMs, flushPartialAsTurn fires and the agent runs.
           if (partialText) scheduleDeltaQuietFlush();
         },
-        onCompleted: () => {
+        onCompleted: (fallbackText) => {
           // Fallback: if our quiet timer hasn't fired yet (e.g., user clicked
           // Stop and the server's manual commit produced a completed event
           // before deltaQuietMs elapsed), drain whatever partial we still
           // have. flushPartialAsTurn is idempotent.
+          const text = fallbackText?.trim();
+          if (!partialText.trim() && text && text !== lastQueuedTranscript) partialText = text;
           flushPartialAsTurn();
         },
       });
@@ -166,6 +170,7 @@ export function createOpenAITranscription({
       configured = false;
       pendingAudio = [];
       partialText = "";
+      lastQueuedTranscript = "";
       bufferedSinceCommit = false;
     });
 
@@ -276,7 +281,7 @@ function handleSocketMessage(line, { sendTranscript, getPartial, setPartial, onR
     // our quiet timer having fired (e.g., Stop click). Pass to onCompleted
     // which calls flushPartialAsTurn (idempotent).
     onBufferDrained?.();
-    onCompleted?.();
+    onCompleted?.(message.transcript);
     return;
   }
 
