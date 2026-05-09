@@ -4,18 +4,18 @@ import assert from "node:assert/strict";
 import { computeAgentCost, computeTranscriptionCost, createSessionCostTracker } from "../src/session-cost.js";
 
 test("computeAgentCost prices uncached input, cached input, and output separately", () => {
-  // gpt-5.5: $1.25 input, $0.125 cached, $10.00 output per 1M tokens
+  // gpt-5.5: $5.00 input, $0.50 cached, $30.00 output per 1M tokens
   const cost = computeAgentCost({
     provider: "openai",
     model: "gpt-5.5",
     usage: { input: 10_000, cached: 8_000, output: 1_000, reasoning: 500 },
   });
-  // 2k uncached @ $1.25/M = $0.0025
-  // 8k cached @ $0.125/M = $0.001
-  // 1k output @ $10/M = $0.01
-  // (reasoning is billed at output rate per OpenAI; 0.5k * $10/M = $0.005)
+  // 2k uncached @ $5/M = $0.01
+  // 8k cached @ $0.5/M = $0.004
+  // 1k output @ $30/M = $0.03
+  // 0.5k reasoning @ $30/M = $0.015 (reasoning billed at output rate)
   assert.ok(cost.priced);
-  assert.equal(cost.cost.toFixed(6), (0.0025 + 0.001 + 0.01 + 0.005).toFixed(6));
+  assert.equal(cost.cost.toFixed(6), (0.01 + 0.004 + 0.03 + 0.015).toFixed(6));
 });
 
 test("computeAgentCost returns priced=false for unknown OpenAI model", () => {
@@ -89,8 +89,8 @@ test("createSessionCostTracker accumulates agent usage across turns", () => {
   assert.equal(summary.agent.tokens.cached, 9_500);
   assert.equal(summary.agent.tokens.output, 150);
   assert.ok(summary.agent.priced);
-  // 1500 uncached @ 1.25/M + 9500 cached @ 0.125/M + 150 output @ 10/M
-  const expected = (1500 * 1.25 + 9500 * 0.125) / 1_000_000 + 150 * 10 / 1_000_000;
+  // 1500 uncached @ $5/M + 9500 cached @ $0.5/M + 150 output @ $30/M
+  const expected = (1500 * 5 + 9500 * 0.5) / 1_000_000 + 150 * 30 / 1_000_000;
   assert.equal(summary.agent.cost.toFixed(6), expected.toFixed(6));
 });
 

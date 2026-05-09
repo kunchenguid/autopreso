@@ -1,28 +1,27 @@
 // Session cost tracking. The numbers in AGENT_PRICING / TRANSCRIPTION_PRICING
-// are best-effort estimates of OpenAI list pricing as of early 2026 - update
-// them in one place when OpenAI changes its rate card. Local providers
-// (moonshine, ollama) are billed at $0; codex routes through the user's
-// ChatGPT subscription so it isn't billed per-token here either.
+// are OpenAI list pricing as of May 2026 - update them in one place if OpenAI
+// changes its rate card. Local providers (moonshine, ollama) are billed at
+// $0; codex routes through the user's ChatGPT subscription so it isn't
+// billed per-token here either.
 
 const SAMPLE_RATE_HZ = 24_000;
 const PCM16_BYTES_PER_SAMPLE = 2;
 
 // Per 1M tokens, USD. cachedInput is the rate for input tokens served from
-// the prompt cache; reasoning tokens are billed at the output rate per
-// OpenAI's published pricing.
+// the prompt cache (10% of input across the board per OpenAI's policy).
+// Reasoning tokens are billed at the output rate.
 export const AGENT_PRICING = {
   openai: {
-    "gpt-5.5":      { input: 1.25, cachedInput: 0.125, output: 10.00 },
-    "gpt-5.5-fast": { input: 5.00, cachedInput: 0.500, output: 40.00 },
-    "gpt-5.4":      { input: 1.25, cachedInput: 0.125, output: 10.00 },
-    "gpt-5.4-mini": { input: 0.25, cachedInput: 0.025, output:  2.00 },
+    "gpt-5.5":      { input: 5.00, cachedInput: 0.50,  output: 30.00 },
+    "gpt-5.4":      { input: 2.50, cachedInput: 0.25,  output: 15.00 },
+    "gpt-5.4-mini": { input: 0.75, cachedInput: 0.075, output:  4.50 },
   },
 };
 
 // Per minute of audio sent, USD.
 export const TRANSCRIPTION_PRICING = {
   openai: {
-    "gpt-realtime-whisper":   0.060,
+    "gpt-realtime-whisper":   0.017,
     "gpt-4o-transcribe":      0.006,
     "gpt-4o-mini-transcribe": 0.003,
     "whisper-1":              0.006,
