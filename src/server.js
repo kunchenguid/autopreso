@@ -155,6 +155,7 @@ export async function startServer(options) {
   httpServer.on("close", () => transcription.close());
 
   wss.on("connection", async (client) => {
+    let activeAudioSessionId = null;
     client.send(JSON.stringify({ type: "config", transcriptionEngine: transcription.getLabel() }));
     if (options.settingsStore) {
       const sanitized = await options.settingsStore.getSanitized();
@@ -176,13 +177,24 @@ export async function startServer(options) {
         return;
       }
 
+      if (message.type === "audio:start") {
+        if (state.mode === "live" && typeof message.sessionId === "string") activeAudioSessionId = message.sessionId;
+      }
+
       if (message.type === "audio") {
-        if (state.mode === "live") transcription.sendAudio(message.audio);
+        const hasSessionId = typeof message.sessionId === "string";
+        const matchesActiveSession = hasSessionId ? message.sessionId === activeAudioSessionId : activeAudioSessionId === null;
+        if (state.mode === "live" && matchesActiveSession) transcription.sendAudio(message.audio);
       }
 
       if (message.type === "stop") {
-        transcription.stop();
-        state.endSession();
+        const hasSessionId = typeof message.sessionId === "string";
+        const matchesActiveSession = hasSessionId ? message.sessionId === activeAudioSessionId : activeAudioSessionId === null;
+        if (matchesActiveSession) {
+          transcription.stop();
+          activeAudioSessionId = null;
+          state.endSession();
+        }
       }
 
       if (message.type === "whiteboard:screenshot" && typeof message.image === "string") {

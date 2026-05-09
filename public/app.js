@@ -358,13 +358,15 @@ function App() {
         audio: audioConstraints,
       });
 
+      const audioSessionId = crypto.randomUUID();
+      ws.send(JSON.stringify({ type: "audio:start", sessionId: audioSessionId }));
       audio = await createAudioStreamer(media, (audioBase64) => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "audio", audio: audioBase64 }));
+          ws.send(JSON.stringify({ type: "audio", sessionId: audioSessionId, audio: audioBase64 }));
         }
       });
       setAnalyser(audio.analyser);
-      audioSessionRef.current = { media, audio };
+      audioSessionRef.current = { media, audio, id: audioSessionId };
       setListening(true);
       setStarting(false);
     } catch (err) {
@@ -381,7 +383,7 @@ function App() {
     audioSessionRef.current = null;
     if (!session) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "stop" }));
+      wsRef.current.send(JSON.stringify({ type: "stop", sessionId: session.id }));
     }
     session.media.getTracks().forEach((track) => track.stop());
     await session.audio.close();
