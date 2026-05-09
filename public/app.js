@@ -87,6 +87,7 @@ function App() {
   // their keystrokes don't fight the WS settings broadcast we trigger on save.
   const agentInstructionsSeededRef = React.useRef(false);
   const agentInstructionsSaveTimerRef = React.useRef(null);
+  const agentInstructionsSavePromiseRef = React.useRef(Promise.resolve());
 
   React.useEffect(() => { listeningRef.current = listening; }, [listening]);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -130,8 +131,17 @@ function App() {
     setAgentInstructionsValue(value);
     clearTimeout(agentInstructionsSaveTimerRef.current);
     agentInstructionsSaveTimerRef.current = setTimeout(() => {
-      saveSettings({ agentInstructions: value }).catch((err) => setError(err.message));
+      agentInstructionsSaveTimerRef.current = null;
+      agentInstructionsSavePromiseRef.current = saveSettings({ agentInstructions: value }).catch((err) => setError(err.message));
     }, 600);
+  }
+
+  async function flushAgentInstructionsSave() {
+    clearTimeout(agentInstructionsSaveTimerRef.current);
+    agentInstructionsSaveTimerRef.current = null;
+    await agentInstructionsSavePromiseRef.current;
+    agentInstructionsSavePromiseRef.current = saveSettings({ agentInstructions });
+    await agentInstructionsSavePromiseRef.current;
   }
 
   function handleExcalidrawChange(elements) {
@@ -362,6 +372,7 @@ function App() {
     setError("");
     setPresoStarting(true);
     try {
+      await flushAgentInstructionsSave();
       // Snapshot what the user has on the staging canvas right now.
       const stagingNative = excalidrawAPI.getSceneElements().map((el) => ({ ...el }));
       stagingSceneRef.current = stagingNative;

@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { readCodexCliAuthSync } from "./codex-auth.js";
 
+export const MAX_AGENT_INSTRUCTIONS_CHARS = 100_000;
+
 export const DEFAULT_SETTINGS = Object.freeze({
   agent: {
     provider: "openai",
@@ -57,6 +59,7 @@ export function createSettingsStore({ filePath, env = process.env, readCodexAuth
 
   async function save(partial) {
     if (!cached) await load();
+    validateAgentInstructions(partial?.agentInstructions);
     cached = deepMerge(cached, partial);
     await writeToDisk(cached);
     return cached;
@@ -135,4 +138,10 @@ function safeReadCodexAuth(readCodexAuth, env) {
 function trimOrEmpty(value) {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+export function validateAgentInstructions(value) {
+  if (typeof value === "string" && value.length > MAX_AGENT_INSTRUCTIONS_CHARS) {
+    throw new Error(`Agent instructions must be ${MAX_AGENT_INSTRUCTIONS_CHARS} characters or fewer.`);
+  }
 }

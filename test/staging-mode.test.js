@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { WebSocket } from "ws";
 
 import { startServer } from "../src/server.js";
+import { MAX_AGENT_INSTRUCTIONS_CHARS } from "../src/settings-store.js";
 import { STARTER_ELEMENTS } from "../public/starter-elements.js";
 
 const SAMPLE_STAGING_ELEMENTS = [
@@ -830,6 +831,26 @@ test("agent instructions snapshot at preso start are folded into system prompt f
       /Lewis Carroll quill, never use the colour red/,
       "warmup system prompt must include the user's agent instructions",
     );
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("POST /api/preso/start rejects oversized saved agent instructions", async () => {
+  const settingsStore = makeSettingsStore({ agentInstructions: "x".repeat(MAX_AGENT_INSTRUCTIONS_CHARS + 1) });
+  const { httpServer, url } = await startTestServer({ settingsStore });
+  try {
+    const res = await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.match(body.error, /Agent instructions must be 100000 characters or fewer\./);
   } finally {
     await new Promise((resolve) => httpServer.close(resolve));
   }

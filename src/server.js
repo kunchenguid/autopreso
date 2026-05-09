@@ -17,6 +17,7 @@ import {
 } from "./agent-provider.js";
 import { createMoonshineTranscription as createDefaultMoonshineTranscription } from "./moonshine-transcription.js";
 import { createOpenAITranscription as createDefaultOpenAITranscription } from "./openai-transcription.js";
+import { validateAgentInstructions } from "./settings-store.js";
 import { broadcast, createWhiteboardSession } from "./whiteboard-session.js";
 import { detectMalformedLayoutWarnings, normalizeWhiteboardElements } from "./whiteboard-elements.js";
 import { extractWhiteboardKeywords } from "./whiteboard-keywords.js";
@@ -78,16 +79,22 @@ export async function startServer(options) {
     if (!Array.isArray(stagingElements)) {
       return res.status(400).json({ error: "stagingElements (array) is required." });
     }
-    const primerMessage = buildStagingPrimerMessage({ stagingElements, stagingScreenshot });
-    const keywords = extractWhiteboardKeywords(stagingElements);
-    console.log(`[autopreso] preso/start: ${keywords.length} staging keyword(s) for transcription bias`);
-    transcription.setSessionContext({ keywords });
     // Snapshot the user's free-form Agent instructions at start so the cached
     // system-prompt prefix stays stable for the whole preso. Edits made to
     // the textarea after Start Preso land on disk but only take effect on the
     // next Start Preso.
-    const settings = options.settingsStore ? await options.settingsStore.load() : null;
+    let settings;
+    try {
+      settings = options.settingsStore ? await options.settingsStore.load() : null;
+      validateAgentInstructions(settings?.agentInstructions);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
     const agentInstructions = typeof settings?.agentInstructions === "string" ? settings.agentInstructions : "";
+    const primerMessage = buildStagingPrimerMessage({ stagingElements, stagingScreenshot });
+    const keywords = extractWhiteboardKeywords(stagingElements);
+    console.log(`[autopreso] preso/start: ${keywords.length} staging keyword(s) for transcription bias`);
+    transcription.setSessionContext({ keywords });
     state.startPreso({ primerMessage, agentInstructions });
     state.startWarmupLoop({
       runOnce: ({ attempt }) =>
