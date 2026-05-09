@@ -15,7 +15,7 @@ test("frontend clears stale agent thinking status when the socket is closed", ()
 test("frontend exports and sends whiteboard screenshots over the websocket", () => {
   const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
 
-  assert.match(appSource, /import \{ Excalidraw, convertToExcalidrawElements/);
+  assert.match(appSource, /import\s*\{[^}]*\bExcalidraw\b[^}]*\bconvertToExcalidrawElements\b/s);
   assert.match(appSource, /type: "whiteboard:screenshot"/);
   // Live screenshot loop still uses the cheap static-canvas path, not
   // exportToBlob with hardcoded 1280x720 dims (the previous regression).

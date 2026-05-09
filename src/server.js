@@ -17,6 +17,7 @@ import {
 } from "./agent-provider.js";
 import { createMoonshineTranscription as createDefaultMoonshineTranscription } from "./moonshine-transcription.js";
 import { createOpenAITranscription as createDefaultOpenAITranscription } from "./openai-transcription.js";
+import { audioSecondsFromBase64Pcm16 } from "./session-cost.js";
 import { validateAgentInstructions } from "./settings-store.js";
 import { broadcast, createWhiteboardSession } from "./whiteboard-session.js";
 import { detectMalformedLayoutWarnings, normalizeWhiteboardElements } from "./whiteboard-elements.js";
@@ -52,6 +53,7 @@ export async function startServer(options) {
     options,
     wss,
     queueTranscript: (transcript) => state.queueTranscript(transcript),
+    state,
   });
 
   app.get("/api/config", async (_req, res) => {
@@ -71,6 +73,7 @@ export async function startServer(options) {
     state.reset();
     transcription.setSessionContext({ keywords: [] });
     broadcast(wss, { type: "whiteboard:update", elements: state.elements });
+    broadcastCost(wss, state);
     res.json({ ok: true });
   });
 
@@ -101,6 +104,7 @@ export async function startServer(options) {
         runWhiteboardWarmupOnce({
           state,
           options,
+          wss,
           attempt,
           generateTextFn: options.generateTextFn ?? generateText,
           streamTextFn: options.streamTextFn ?? streamText,
@@ -118,6 +122,7 @@ export async function startServer(options) {
     });
     broadcast(wss, { type: "mode", mode: state.mode });
     broadcast(wss, { type: "whiteboard:update", elements: state.elements });
+    broadcastCost(wss, state);
     res.json({ ok: true });
   });
 
@@ -150,6 +155,7 @@ export async function startServer(options) {
   httpServer.on("close", () => transcription.close());
 
   wss.on("connection", async (client) => {
+    let activeAudioSessionId = null;
     client.send(JSON.stringify({ type: "config", transcriptionEngine: transcription.getLabel() }));
     if (options.settingsStore) {
       const sanitized = await options.settingsStore.getSanitized();
@@ -158,6 +164,7 @@ export async function startServer(options) {
     client.send(JSON.stringify({ type: "agent:status", status: state.agentStatus }));
     client.send(JSON.stringify({ type: "mode", mode: state.mode }));
     client.send(JSON.stringify({ type: "warmup", ...state.warmupState }));
+    client.send(JSON.stringify({ type: "cost", ...state.cost.getSummary() }));
     if (state.mode === "live") {
       client.send(JSON.stringify({ type: "whiteboard:update", elements: state.elements }));
     }
@@ -170,12 +177,24 @@ export async function startServer(options) {
         return;
       }
 
+      if (message.type === "audio:start") {
+        if (state.mode === "live" && typeof message.sessionId === "string") activeAudioSessionId = message.sessionId;
+      }
+
       if (message.type === "audio") {
-        if (state.mode === "live") transcription.sendAudio(message.audio);
+        const hasSessionId = typeof message.sessionId === "string";
+        const matchesActiveSession = hasSessionId ? message.sessionId === activeAudioSessionId : activeAudioSessionId === null;
+        if (state.mode === "live" && matchesActiveSession) transcription.sendAudio(message.audio);
       }
 
       if (message.type === "stop") {
-        transcription.stop();
+        const hasSessionId = typeof message.sessionId === "string";
+        const matchesActiveSession = hasSessionId ? message.sessionId === activeAudioSessionId : activeAudioSessionId === null;
+        if (matchesActiveSession) {
+          transcription.stop();
+          activeAudioSessionId = null;
+          state.endSession();
+        }
       }
 
       if (message.type === "whiteboard:screenshot" && typeof message.image === "string") {
@@ -220,11 +239,14 @@ export async function startServer(options) {
   };
 }
 
-async function createTranscriptionManager({ options, wss, queueTranscript }) {
+async function createTranscriptionManager({ options, wss, queueTranscript, state }) {
   let current = null;
   let label = "";
   let sessionContext = null;
   let hasSessionContext = false;
+  let activeProvider = null;
+  let activeModel = null;
+  let lastCostBroadcastAt = 0;
 
   const sendTranscript = (message) => broadcast(wss, message);
 
@@ -257,6 +279,10 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
   async function applyCurrent() {
     const settings = options.settingsStore ? await options.settingsStore.load() : null;
     const newLabel = describeLabel(settings);
+    activeProvider = settings ? settings.transcription.provider : (options.transcriptionProvider ?? "moonshine");
+    activeModel = activeProvider === "openai"
+      ? (settings?.transcription.openai.model ?? options.openaiTranscriptionModel ?? null)
+      : (settings?.transcription.moonshine.model ?? options.moonshineModel ?? null);
 
     if (current && newLabel === label) return;
 
@@ -280,7 +306,23 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
   await applyCurrent();
 
   return {
-    sendAudio: (audio) => current?.sendAudio(audio),
+    sendAudio: (audio) => {
+      current?.sendAudio(audio);
+      if (state?.cost && activeProvider) {
+        state.cost.recordTranscriptionAudio({
+          provider: activeProvider,
+          model: activeModel,
+          seconds: audioSecondsFromBase64Pcm16(audio),
+        });
+        // Throttle cost broadcast to ~once per second; audio frames arrive
+        // every ~170ms and we don't want to flood the WS with cost updates.
+        const now = Date.now();
+        if (now - lastCostBroadcastAt >= 1000) {
+          lastCostBroadcastAt = now;
+          broadcastCost(wss, state);
+        }
+      }
+    },
     stop: () => current?.stop(),
     close: () => current?.close(),
     setSessionContext: (ctx) => {
@@ -294,6 +336,14 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
 }
 
 export async function runWhiteboardAgent({ transcript, state, wss, options, generateTextFn = generateText, streamTextFn = streamText }) {
+  // Capture the session at turn start. If the user clicks Stop / Back to
+  // staging / Reset / Start preso while we're in flight, mySession.active
+  // flips to false. Tool execute and the post-turn agentHistory update both
+  // check this and become no-ops, so late LLM responses can't mutate the
+  // canvas or contaminate the next session's history. Cost recording does
+  // NOT consult this - we paid for the tokens regardless.
+  // (Tests/scaffolds without a session token are treated as always-active.)
+  const mySession = state.session ?? { active: true };
   // Only attach the live screenshot when the canvas has been edited since the
   // last attach. On DONE-only turns nothing changed, so the screenshot adds
   // ~7-10k tokens of noise without giving the agent new visual info.
@@ -352,6 +402,7 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
           elements: z.array(whiteboardElementSchema).describe("Complete replacement drawing object array."),
         }),
         execute: async ({ elements }) => {
+          if (!mySession.active) return STALE_SESSION_TOOL_RESULT;
           options.onAgentEvent?.({ type: "tool:start", tool: "whiteboard_overwrite", input: { elements }, timestamp: new Date().toISOString() });
           const normalizedElements = normalizeWhiteboardElements(elements);
           state.elements = normalizedElements;
@@ -374,6 +425,7 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
           }).optional().describe("Optional viewport command applied AFTER any edits. Omit when no viewport change is needed."),
         }),
         execute: async ({ operations, viewport }) => {
+          if (!mySession.active) return STALE_SESSION_TOOL_RESULT;
           const hasOps = Array.isArray(operations) && operations.length > 0;
           const hasViewport = viewport && typeof viewport === "object";
           if (!hasOps && !hasViewport) {
@@ -443,13 +495,23 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
       tools: fingerprint(toolDefinitionFingerprintInput(agentCallOptions.tools)),
     },
   });
+  recordAgentCost(state, wss, agentProvider, result);
   options.onAgentEvent?.({ type: "model:end", transcript, result: summarizeAgentResult(result), timestamp: new Date().toISOString() });
 
-  state.agentHistory = appendWhiteboardAgentHistory(state.agentHistory, {
-    transcript,
-  });
+  if (mySession.active) {
+    state.agentHistory = appendWhiteboardAgentHistory(state.agentHistory, {
+      transcript,
+    });
+  }
   return result;
 }
+
+// Returned to the model when a tool is called after the user has ended the
+// session (clicked Stop, etc). The model sees this as the tool result, which
+// usually causes it to stop without further tool calls. State is unchanged
+// either way - what matters is that we did not mutate state.elements or
+// broadcast a whiteboard:update for the late edit.
+const STALE_SESSION_TOOL_RESULT = "Session has ended; the requested edit was not applied.";
 
 function appendLayoutWarnings(formattedBoard, elements) {
   const warnings = detectMalformedLayoutWarnings(elements);
@@ -494,7 +556,7 @@ export const WARMUP_USER_MESSAGE = {
 export const WARMUP_ASSISTANT_REPLY = { role: "assistant", content: "UNDERSTOOD" };
 export const WARMUP_PRIMING_MESSAGES = [WARMUP_USER_MESSAGE, WARMUP_ASSISTANT_REPLY];
 
-export async function runWhiteboardWarmupOnce({ state, options, attempt = 1, generateTextFn = generateText, streamTextFn = streamText }) {
+export async function runWhiteboardWarmupOnce({ state, options, wss = null, attempt = 1, generateTextFn = generateText, streamTextFn = streamText }) {
   if (!Array.isArray(state.agentHistory) || state.agentHistory.length === 0) return undefined;
 
   const baseSystem = whiteboardSystemPrompt();
@@ -579,9 +641,26 @@ export async function runWhiteboardWarmupOnce({ state, options, attempt = 1, gen
     "Whiteboard warmup timed out",
   );
   logAgentUsage(label, result, { fingerprints });
+  recordAgentCost(state, wss, agentProvider, result);
 
   options.onAgentEvent?.({ type: "warmup:end", attempt, result: summarizeAgentResult(result), timestamp: new Date().toISOString() });
   return { usage: extractAgentUsage(result), result };
+}
+
+function recordAgentCost(state, wss, agentProvider, result) {
+  if (!state?.cost || !agentProvider) return;
+  const usage = extractAgentUsage(result);
+  // Codex maps requested model "gpt-5.5-fast" -> model "gpt-5.5" + priority
+  // tier. For display, prefer the user's chosen string. (Codex isn't priced
+  // per-token here anyway; the tracker just shows it for context.)
+  const model = agentProvider.requestedModel ?? agentProvider.model;
+  state.cost.recordAgentUsage({ provider: agentProvider.provider, model, usage });
+  if (wss) broadcastCost(wss, state);
+}
+
+export function broadcastCost(wss, state) {
+  if (!wss || !state?.cost) return;
+  broadcast(wss, { type: "cost", ...state.cost.getSummary() });
 }
 
 function summarizeAgentResult(result) {

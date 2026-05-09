@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 
+import { createSessionCostTracker } from "./session-cost.js";
 import { createTranscriptTurnQueue } from "./transcript-turn-queue.js";
 
 const FILLER_WORDS = new Set([
@@ -52,6 +53,14 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     // sent to the agent. We only attach the live screenshot when this is true
     // (saves ~7-10k tokens per turn on DONE-only turns when nothing changed).
     canvasDirtyForAgent: false,
+    cost: createSessionCostTracker(),
+    // Session token. In-flight operations capture this object at start and
+    // check `mySession.active` before mutating shared state. endSession()
+    // flips the captured token's active to false and swaps in a new token,
+    // so anything still in flight (LLM response, tool execute, queued turn,
+    // late delta flush) becomes a no-op for state mutation. Cost tracking
+    // does NOT consult this - we record what we paid for regardless.
+    session: { id: 0, active: true },
   };
 
   let warmupCancelled = false;
@@ -65,6 +74,11 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
   }
 
   const queue = createTranscriptTurnQueue({
+    // No queue-level debounce: turn boundaries are decided upstream by the
+    // transcription provider (delta-quiet for OpenAI; per-chunk commits for
+    // Moonshine), so by the time queueTranscript fires, the chunk represents
+    // a complete utterance and should run immediately.
+    debounceMs: 0,
     // A turn is "ready" only when the accumulated buffer has at least one
     // substantive (non-filler) word. Pure fillers ("uh", "uh um") keep
     // accumulating until the speaker says something real, then fire as one
@@ -72,10 +86,15 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     isReady: (text) => !isTrivialTranscript(text),
     runTurn: async (transcript) => {
       if (state.mode !== "live") return;
+      // Capture the session at the moment the turn begins. If endSession()
+      // fires while we're awaiting warmup or the agent call, mySession.active
+      // flips to false and we bail without mutating anything.
+      const mySession = state.session;
       // Wait for any in-flight prompt-cache warmup so the cache is primed
       // before we send the first real transcript turn through.
       try { await state.warmupPromise; } catch { /* warmup errors are logged elsewhere */ }
       if (state.mode !== "live") return;
+      if (!mySession.active) return;
       state.agentBusy = true;
       publishAgentStatus();
       options.onAgentEvent?.({ type: "turn:start", transcript, timestamp: new Date().toISOString() });
@@ -95,6 +114,10 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
 
   state.queueTranscript = (text) => queue.enqueue(text);
   state.idle = () => queue.idle();
+  state.endSession = () => {
+    state.session.active = false;
+    state.session = { id: state.session.id + 1, active: true };
+  };
   state.updateLatestScreenshot = (image) => {
     state.latestScreenshot = image;
     // A fresh screenshot means the canvas changed (either the agent just
@@ -103,11 +126,14 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     state.canvasDirtyForAgent = true;
   };
   state.reset = () => {
+    state.endSession();
     state.elements = seedElements();
     state.agentHistory = [];
     state.latestScreenshot = undefined;
+    state.cost.reset();
   };
   state.startPreso = ({ primerMessage, agentInstructions = "" }) => {
+    state.endSession();
     state.mode = "live";
     state.elements = seedElements();
     state.latestScreenshot = undefined;
@@ -115,6 +141,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     state.agentInstructions = typeof agentInstructions === "string" ? agentInstructions : "";
     state.warmupPromise = Promise.resolve();
     state.canvasDirtyForAgent = false;
+    state.cost.reset();
     // Reset warmup state for this preso. The startWarmupLoop call that follows
     // will publish the first "running" broadcast.
     state.warmupState = { state: "idle", attempt: 0, maxAttempts: DEFAULT_WARMUP_MAX_ATTEMPTS };
@@ -206,6 +233,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
   };
 
   state.backToStaging = () => {
+    state.endSession();
     state.mode = "staging";
     state.cancelWarmup();
   };

@@ -358,6 +358,37 @@ test("audio frames are forwarded to transcription after Start preso", async () =
   }
 });
 
+test("late audio frames from a stopped listening session are ignored", async () => {
+  const { httpServer, url, transcription } = await startTestServer();
+  const ws = new WebSocket(url.replace("http:", "ws:") + "/ws");
+  try {
+    await new Promise((resolve, reject) => {
+      ws.once("open", resolve);
+      ws.once("error", reject);
+    });
+
+    await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+
+    ws.send(JSON.stringify({ type: "audio:start", sessionId: "session-1" }));
+    ws.send(JSON.stringify({ type: "audio", sessionId: "session-1", audio: "BBBB" }));
+    ws.send(JSON.stringify({ type: "stop", sessionId: "session-1" }));
+    ws.send(JSON.stringify({ type: "audio", sessionId: "session-1", audio: "CCCC" }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    assert.deepEqual(transcription.audioCalls, ["BBBB"]);
+  } finally {
+    ws.terminate();
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
 test("transcript queued in staging mode does not invoke the agent", async () => {
   const agentInvocations = [];
   const { httpServer, state } = await startTestServer({
