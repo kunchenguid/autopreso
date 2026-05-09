@@ -35,7 +35,7 @@ export function buildTranscriptionVocabularyPrompt(keywords, { maxChars = DEFAUL
   let body = "";
   for (const term of keywords) {
     const next = body.length === 0 ? term : `${body}, ${term}`;
-    if (PROMPT_PREFIX.length + next.length + PROMPT_SUFFIX.length > maxChars) break;
+    if (PROMPT_PREFIX.length + next.length + PROMPT_SUFFIX.length > maxChars) continue;
     body = next;
   }
   if (!body) return "";

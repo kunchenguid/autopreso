@@ -98,3 +98,14 @@ test("buildTranscriptionVocabularyPrompt enforces a char cap, dropping later ter
   assert.match(prompt, /alpha/);
   assert.ok(!prompt.includes("gamma"), "trailing term should be dropped under cap");
 });
+
+test("buildTranscriptionVocabularyPrompt skips oversized terms and keeps fitting terms", () => {
+  const prompt = buildTranscriptionVocabularyPrompt(
+    ["a very long term that cannot fit", "Avro", "Raft"],
+    { maxChars: 45 },
+  );
+  assert.ok(prompt.length <= 45, `prompt should fit in 45 chars, got ${prompt.length}: ${prompt}`);
+  assert.ok(!prompt.includes("a very long term"));
+  assert.match(prompt, /Avro/);
+  assert.match(prompt, /Raft/);
+});
