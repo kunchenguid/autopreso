@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 
+import { createSessionCostTracker } from "./session-cost.js";
 import { createTranscriptTurnQueue } from "./transcript-turn-queue.js";
 
 const FILLER_WORDS = new Set([
@@ -52,6 +53,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     // sent to the agent. We only attach the live screenshot when this is true
     // (saves ~7-10k tokens per turn on DONE-only turns when nothing changed).
     canvasDirtyForAgent: false,
+    cost: createSessionCostTracker(),
   };
 
   let warmupCancelled = false;
@@ -65,6 +67,11 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
   }
 
   const queue = createTranscriptTurnQueue({
+    // No queue-level debounce: turn boundaries are decided upstream by the
+    // transcription provider (delta-quiet for OpenAI; per-chunk commits for
+    // Moonshine), so by the time queueTranscript fires, the chunk represents
+    // a complete utterance and should run immediately.
+    debounceMs: 0,
     // A turn is "ready" only when the accumulated buffer has at least one
     // substantive (non-filler) word. Pure fillers ("uh", "uh um") keep
     // accumulating until the speaker says something real, then fire as one
@@ -106,6 +113,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     state.elements = seedElements();
     state.agentHistory = [];
     state.latestScreenshot = undefined;
+    state.cost.reset();
   };
   state.startPreso = ({ primerMessage, agentInstructions = "" }) => {
     state.mode = "live";
@@ -115,6 +123,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     state.agentInstructions = typeof agentInstructions === "string" ? agentInstructions : "";
     state.warmupPromise = Promise.resolve();
     state.canvasDirtyForAgent = false;
+    state.cost.reset();
     // Reset warmup state for this preso. The startWarmupLoop call that follows
     // will publish the first "running" broadcast.
     state.warmupState = { state: "idle", attempt: 0, maxAttempts: DEFAULT_WARMUP_MAX_ATTEMPTS };

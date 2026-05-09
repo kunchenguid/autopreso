@@ -59,6 +59,9 @@ test("createOpenAITranscription configures the session on open and signals ready
   assert.equal(sessionUpdate.session.audio.input.format.type, "audio/pcm");
   assert.equal(sessionUpdate.session.audio.input.format.rate, 24000);
   assert.equal(sessionUpdate.session.audio.input.transcription.model, "gpt-4o-mini-transcribe");
+  // OpenAI Realtime applies server_vad by default. Sending explicit
+  // turn_detection is rejected by gpt-realtime-whisper, so we omit it and
+  // let the server keep its defaults for models that retain them.
   assert.equal(sessionUpdate.session.audio.input.turn_detection, undefined);
 
   let ready = false;
@@ -89,7 +92,11 @@ test("createOpenAITranscription sends audio frames as input_audio_buffer.append"
   assert.equal(audioMessage.audio, "base64audio");
 });
 
-test("createOpenAITranscription maps delta and completed events to transcript messages", () => {
+test("createOpenAITranscription queues the accumulated partial (not message.transcript) on completed", () => {
+  // Architecture change: we no longer trust transcription.completed to drive
+  // turns - the queue is delta-driven. completed is just a fallback that
+  // flushes whatever was in the partial. So the text the agent receives is
+  // the accumulated delta text, not the model's self-corrected transcript.
   const socket = createMockSocket();
   const messages = [];
   const queued = [];
@@ -114,9 +121,9 @@ test("createOpenAITranscription maps delta and completed events to transcript me
 
   assert.deepEqual(messages, [
     { type: "transcript:partial", text: "Hello" },
-    { type: "transcript:committed", text: "Hello world" },
+    { type: "transcript:committed", text: "Hello" },
   ]);
-  assert.deepEqual(queued, ["Hello world"]);
+  assert.deepEqual(queued, ["Hello"]);
 });
 
 test("createOpenAITranscription accumulates partial deltas across one utterance", () => {
@@ -330,6 +337,195 @@ test("setSessionContext after the session is configured pushes a follow-up sessi
   const prompt = updates[0].session.audio.input.transcription.prompt;
   assert.match(prompt, /gRPC/);
   assert.match(prompt, /Avro/);
+});
+
+test("follow-up session.update re-states audio format so server VAD config isn't disturbed", () => {
+  // Regression: a partial session.update that only carries audio.input.transcription
+  // can cause OpenAI Realtime to drop audio.input.format. Re-state format on
+  // every follow-up so we never depend on partial-merge semantics.
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-4o-transcribe" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.sent.length = 0;
+
+  transcription.setSessionContext({ keywords: ["gRPC", "Avro"] });
+
+  const updates = socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "session.update");
+  assert.equal(updates.length, 1);
+  const audioInput = updates[0].session.audio.input;
+  assert.equal(audioInput.format.type, "audio/pcm");
+  assert.equal(audioInput.format.rate, 24000);
+});
+
+test("delta-quiet window queues the accumulated partial text as one turn", async () => {
+  // The agent decision is delta-driven: when deltas stop arriving for the
+  // quiet window, treat the accumulated partial as a complete utterance and
+  // queue it. We do NOT wait for transcription.completed.
+  const queued = [];
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: (text) => queued.push(text),
+    options: { openaiTranscriptionModel: "gpt-realtime-whisper", openaiDeltaQuietMs: 60 },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  await transcription.ready();
+  socket.sent.length = 0;
+
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "hello " }));
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "world" }));
+
+  // Within the quiet window: nothing queued yet.
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual(queued, []);
+
+  // After the quiet window: the full accumulated partial fires as one turn.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(queued, ["hello world"]);
+});
+
+test("delta-quiet timer resets on every new delta", async () => {
+  const queued = [];
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: (text) => queued.push(text),
+    options: { openaiTranscriptionModel: "gpt-realtime-whisper", openaiDeltaQuietMs: 80 },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  await transcription.ready();
+
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "a" }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "b" }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  // Two 50ms gaps but each new delta resets the timer; nothing queued yet.
+  assert.deepEqual(queued, []);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(queued, ["ab"]);
+});
+
+test("delta-quiet flush also commits OpenAI's audio buffer for state hygiene", async () => {
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-realtime-whisper", openaiDeltaQuietMs: 50 },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  await transcription.ready();
+  socket.sent.length = 0;
+
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "hello" }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const commits = socket.sent.filter((line) => line.includes("input_audio_buffer.commit"));
+  assert.equal(commits.length, 1, "delta-quiet flush should also commit the OpenAI buffer");
+});
+
+test("transcription.completed is idempotent if delta-quiet already flushed the partial", async () => {
+  const queued = [];
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: (text) => queued.push(text),
+    options: { openaiTranscriptionModel: "gpt-realtime-whisper", openaiDeltaQuietMs: 30 },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  await transcription.ready();
+
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "hello world" }));
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(queued, ["hello world"]);
+
+  // Server's completed event arrives later. Should NOT re-queue because
+  // delta-quiet already drained the partial.
+  socket.emit("message", JSON.stringify({
+    type: "conversation.item.input_audio_transcription.completed",
+    transcript: "hello world",
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(queued, ["hello world"], "completed should not double-queue");
+});
+
+test("transcription.completed acts as fallback when delta-quiet hasn't fired yet (Stop case)", async () => {
+  const queued = [];
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: (text) => queued.push(text),
+    options: { openaiTranscriptionModel: "gpt-realtime-whisper", openaiDeltaQuietMs: 5000 },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.emit("message", JSON.stringify({ type: "session.updated" }));
+  await transcription.ready();
+
+  socket.emit("message", JSON.stringify({ type: "conversation.item.input_audio_transcription.delta", delta: "still talking" }));
+  // User clicks Stop -> server eventually sends completed before our quiet
+  // window expires. That should drain the partial as a turn.
+  socket.emit("message", JSON.stringify({
+    type: "conversation.item.input_audio_transcription.completed",
+    transcript: "still talking",
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(queued, ["still talking"]);
+});
+
+test("setSessionContext omits prompt for gpt-realtime-whisper (model rejects it)", () => {
+  // gpt-realtime-whisper returns "The 'prompt' parameter is not supported for
+  // this model" if we include prompt. The whole session.update would be
+  // rejected, leaving the model unset.
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-realtime-whisper" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.sent.length = 0;
+
+  transcription.setSessionContext({ keywords: ["gRPC", "Avro"] });
+
+  const updates = socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "session.update");
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].session.audio.input.transcription.prompt, undefined);
 });
 
 test("setSessionContext with empty keywords is a no-op when no prompt was ever set", () => {

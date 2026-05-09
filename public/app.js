@@ -1,4 +1,8 @@
-import { Excalidraw, convertToExcalidrawElements, exportToBlob } from "@excalidraw/excalidraw";
+import {
+  Excalidraw,
+  convertToExcalidrawElements,
+  exportToBlob,
+} from "@excalidraw/excalidraw";
 import React from "react";
 import { createRoot } from "react-dom/client";
 
@@ -8,7 +12,12 @@ const SAMPLE_RATE = 24000;
 const REASONING_EFFORTS = ["none", "low", "medium", "high", "xhigh"];
 const OPENAI_AGENT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
 const CODEX_AGENT_MODELS = ["gpt-5.5", "gpt-5.5-fast", "gpt-5.4"];
-const OPENAI_TRANSCRIPTION_MODELS = ["gpt-realtime-whisper", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-1"];
+const OPENAI_TRANSCRIPTION_MODELS = [
+  "gpt-realtime-whisper",
+  "gpt-4o-transcribe",
+  "gpt-4o-mini-transcribe",
+  "whisper-1",
+];
 const MOONSHINE_MODELS = ["tiny", "small", "medium"];
 const MIC_STORAGE_KEY = "autopreso.mic";
 
@@ -55,7 +64,8 @@ function App() {
   const [starting, setStarting] = React.useState(false);
   const [presoStarting, setPresoStarting] = React.useState(false);
   const [agentStatus, setAgentStatus] = React.useState("idle");
-  const [transcriptionEngine, setTranscriptionEngine] = React.useState("loading");
+  const [transcriptionEngine, setTranscriptionEngine] =
+    React.useState("loading");
   const [settings, setSettings] = React.useState(null);
   const [captionText, setCaptionText] = React.useState("");
   const [error, setError] = React.useState("");
@@ -68,8 +78,13 @@ function App() {
   const [resetConfirming, setResetConfirming] = React.useState(false);
   const [resetting, setResetting] = React.useState(false);
   // warmupState: { state: "idle"|"running"|"confirmed"|"exhausted"|"cancelled", attempt, maxAttempts }
-  const [warmupState, setWarmupState] = React.useState({ state: "idle", attempt: 0, maxAttempts: 8 });
+  const [warmupState, setWarmupState] = React.useState({
+    state: "idle",
+    attempt: 0,
+    maxAttempts: 8,
+  });
   const [agentInstructions, setAgentInstructionsValue] = React.useState("");
+  const [cost, setCost] = React.useState(null);
   const audioSessionRef = React.useRef(null);
   const apiRef = React.useRef(null);
   const wsRef = React.useRef(null);
@@ -89,7 +104,9 @@ function App() {
   const agentInstructionsSaveTimerRef = React.useRef(null);
   const agentInstructionsSavePromiseRef = React.useRef(Promise.resolve());
 
-  React.useEffect(() => { listeningRef.current = listening; }, [listening]);
+  React.useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
   React.useEffect(() => {
@@ -132,7 +149,9 @@ function App() {
     clearTimeout(agentInstructionsSaveTimerRef.current);
     agentInstructionsSaveTimerRef.current = setTimeout(() => {
       agentInstructionsSaveTimerRef.current = null;
-      agentInstructionsSavePromiseRef.current = saveSettings({ agentInstructions: value }).catch((err) => setError(err.message));
+      agentInstructionsSavePromiseRef.current = saveSettings({
+        agentInstructions: value,
+      }).catch((err) => setError(err.message));
     }, 600);
   }
 
@@ -140,7 +159,9 @@ function App() {
     clearTimeout(agentInstructionsSaveTimerRef.current);
     agentInstructionsSaveTimerRef.current = null;
     await agentInstructionsSavePromiseRef.current;
-    agentInstructionsSavePromiseRef.current = saveSettings({ agentInstructions });
+    agentInstructionsSavePromiseRef.current = saveSettings({
+      agentInstructions,
+    });
     await agentInstructionsSavePromiseRef.current;
   }
 
@@ -162,7 +183,9 @@ function App() {
       const hash = JSON.stringify(cleaned);
       if (hash === lastSyncedElementsHashRef.current) return;
       lastSyncedElementsHashRef.current = hash;
-      ws.send(JSON.stringify({ type: "whiteboard:user-elements", elements: cleaned }));
+      ws.send(
+        JSON.stringify({ type: "whiteboard:user-elements", elements: cleaned }),
+      );
     }, 500);
   }
 
@@ -174,7 +197,8 @@ function App() {
 
     ws.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
-      if (message.type === "config") setTranscriptionEngine(message.transcriptionEngine);
+      if (message.type === "config")
+        setTranscriptionEngine(message.transcriptionEngine);
       if (message.type === "settings") setSettings(message.settings);
       if (message.type === "transcript:partial") {
         const text = (message.text ?? "").trim();
@@ -202,6 +226,9 @@ function App() {
           maxAttempts: message.maxAttempts ?? 8,
         });
       }
+      if (message.type === "cost") {
+        setCost({ agent: message.agent, transcription: message.transcription });
+      }
       if (message.type === "mode") {
         const previousMode = modeRef.current;
         modeRef.current = message.mode;
@@ -213,10 +240,13 @@ function App() {
       }
       if (message.type === "whiteboard:update") {
         // Recenter when the live canvas resets to a fresh starter (Start preso, Reset session).
-        const isFreshStarter = Array.isArray(message.elements) && message.elements.length <= STARTER_ELEMENTS.length + 1;
+        const isFreshStarter =
+          Array.isArray(message.elements) &&
+          message.elements.length <= STARTER_ELEMENTS.length + 1;
         applyScene(message.elements, { recenter: isFreshStarter });
       }
-      if (message.type === "whiteboard:viewport") applyWhiteboardViewportCommand(message);
+      if (message.type === "whiteboard:viewport")
+        applyWhiteboardViewportCommand(message);
       if (message.type === "error") {
         setError(message.message);
         if (/agent/i.test(message.message)) setAgentError(true);
@@ -244,12 +274,16 @@ function App() {
   React.useEffect(() => {
     if (!api) return;
     if (!stagingSceneRef.current) {
-      stagingSceneRef.current = convertToExcalidrawElements(STARTER_STAGING_ELEMENTS, { regenerateIds: false });
+      stagingSceneRef.current = convertToExcalidrawElements(
+        STARTER_STAGING_ELEMENTS,
+        { regenerateIds: false },
+      );
     }
     let cancelled = false;
     const refresh = () => {
       if (cancelled) return;
-      if (modeRef.current === "staging") applyScene(stagingSceneRef.current, { recenter: true });
+      if (modeRef.current === "staging")
+        applyScene(stagingSceneRef.current, { recenter: true });
     };
     const timer = setTimeout(refresh, 750);
     document.fonts?.ready.then(refresh).catch(() => {});
@@ -268,7 +302,6 @@ function App() {
       })
       .catch((err) => setError(err.message));
   }, []);
-
 
   async function saveSettings(patch) {
     setError("");
@@ -321,7 +354,9 @@ function App() {
         autoGainControl: true,
       };
       if (mic.deviceId) audioConstraints.deviceId = { exact: mic.deviceId };
-      media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      media = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      });
 
       audio = await createAudioStreamer(media, (audioBase64) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -374,7 +409,9 @@ function App() {
     try {
       await flushAgentInstructionsSave();
       // Snapshot what the user has on the staging canvas right now.
-      const stagingNative = excalidrawAPI.getSceneElements().map((el) => ({ ...el }));
+      const stagingNative = excalidrawAPI
+        .getSceneElements()
+        .map((el) => ({ ...el }));
       stagingSceneRef.current = stagingNative;
       // Convert to the lean skeleton format before sending to the server. The
       // primer JSON is part of the cached prefix, so trimming volatile fields
@@ -385,15 +422,24 @@ function App() {
       // Capture the full staging scene as an image so the primer carries it.
       let stagingScreenshot;
       try {
-        stagingScreenshot = await captureStagingSceneAsImage(excalidrawAPI, stagingNative);
+        stagingScreenshot = await captureStagingSceneAsImage(
+          excalidrawAPI,
+          stagingNative,
+        );
       } catch (err) {
-        console.warn("Failed to capture staging screenshot, sending text-only primer:", err);
+        console.warn(
+          "Failed to capture staging screenshot, sending text-only primer:",
+          err,
+        );
       }
 
       const res = await fetch("/api/preso/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ stagingElements: stagingSkeleton, stagingScreenshot }),
+        body: JSON.stringify({
+          stagingElements: stagingSkeleton,
+          stagingScreenshot,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -423,7 +469,10 @@ function App() {
     if (resetting) return;
     if (!resetConfirming) {
       setResetConfirming(true);
-      resetConfirmTimerRef.current = setTimeout(() => setResetConfirming(false), 3000);
+      resetConfirmTimerRef.current = setTimeout(
+        () => setResetConfirming(false),
+        3000,
+      );
       return;
     }
     clearTimeout(resetConfirmTimerRef.current);
@@ -437,7 +486,9 @@ function App() {
     try {
       if (modeRef.current === "staging") {
         // Staging board lives on the client - just reload the starter content.
-        const fresh = convertToExcalidrawElements(STARTER_STAGING_ELEMENTS, { regenerateIds: false });
+        const fresh = convertToExcalidrawElements(STARTER_STAGING_ELEMENTS, {
+          regenerateIds: false,
+        });
         stagingSceneRef.current = fresh;
         applyScene(fresh);
       } else {
@@ -457,21 +508,28 @@ function App() {
   function applyScene(elements, { recenter = false } = {}) {
     const excalidrawAPI = apiRef.current;
     if (!excalidrawAPI || !Array.isArray(elements)) return;
-    const looksNative = elements.length > 0 && elements[0] && typeof elements[0].versionNonce === "number";
+    const looksNative =
+      elements.length > 0 &&
+      elements[0] &&
+      typeof elements[0].versionNonce === "number";
     // CRITICAL: regenerateIds: false. Excalidraw's default is to throw away
     // user-provided ids and assign fresh nanoids. The agent references its
     // elements by stable ids (e.g. "openai-card") in whiteboard_viewport's
     // focus_ids; if we let Excalidraw rewrite them, the frontend's
     // scene.filter(el => focusIds.includes(el.id)) finds nothing and
     // scrollToContent silently fits the full canvas instead.
-    const renderable = looksNative ? elements : convertToExcalidrawElements(elements, { regenerateIds: false });
+    const renderable = looksNative
+      ? elements
+      : convertToExcalidrawElements(elements, { regenerateIds: false });
     excalidrawAPI.updateScene({
       elements: renderable,
       appState: { viewBackgroundColor: "#fffdf8" },
     });
     if (recenter && renderable.length > 0) {
       // Defer so updateScene's commit is flushed before scrollToContent measures bounds.
-      requestAnimationFrame(() => excalidrawAPI.scrollToContent(undefined, { animate: false }));
+      requestAnimationFrame(() =>
+        excalidrawAPI.scrollToContent(undefined, { animate: false }),
+      );
     }
     scheduleWhiteboardScreenshot();
   }
@@ -482,7 +540,9 @@ function App() {
 
     const action = command.action;
     if (action === "scroll_to_content") {
-      const focusIds = Array.isArray(command.focus_ids) ? command.focus_ids : null;
+      const focusIds = Array.isArray(command.focus_ids)
+        ? command.focus_ids
+        : null;
       let target;
       if (focusIds && focusIds.length > 0) {
         const scene = excalidrawAPI.getSceneElements();
@@ -527,7 +587,9 @@ function App() {
     try {
       const dataUrl = await captureCanvasDataUrl();
       if (!dataUrl) return;
-      ws.send(JSON.stringify({ type: "whiteboard:screenshot", image: dataUrl }));
+      ws.send(
+        JSON.stringify({ type: "whiteboard:screenshot", image: dataUrl }),
+      );
     } catch (error) {
       console.warn("Failed to export whiteboard screenshot:", error);
     }
@@ -552,21 +614,32 @@ function App() {
       const files = excalidrawAPI.getFiles?.() ?? {};
       const blob = await exportToBlob({
         elements,
-        appState: { ...appState, exportBackground: true, viewBackgroundColor: "#fffdf8" },
+        appState: {
+          ...appState,
+          exportBackground: true,
+          viewBackgroundColor: "#fffdf8",
+        },
         files,
         mimeType: "image/png",
       });
       const downscaled = await downscaleBlobByHalf(blob);
       return await blobToDataUrl(downscaled);
     } catch (error) {
-      console.warn("Failed to export staging scene, falling back to viewport canvas:", error);
+      console.warn(
+        "Failed to export staging scene, falling back to viewport canvas:",
+        error,
+      );
       return captureCanvasDataUrl();
     }
   }
 
   const isLive = mode === "live";
   const micState = micError ? "error" : listening ? "active" : "idle";
-  const agentState = agentError ? "error" : agentStatus === "thinking" ? "active" : "idle";
+  const agentState = agentError
+    ? "error"
+    : agentStatus === "thinking"
+      ? "active"
+      : "idle";
   const sttState = sttError ? "error" : listening ? "active" : "idle";
   const agentLabel = settings ? agentModelLabel(settings) : "loading...";
   const sttLabel = settings ? sttModelLabel(settings) : transcriptionEngine;
@@ -581,18 +654,27 @@ function App() {
       React.createElement(Excalidraw, {
         excalidrawAPI: setApi,
         initialData: {
-          elements: convertToExcalidrawElements(STARTER_STAGING_ELEMENTS, { regenerateIds: false }),
+          elements: convertToExcalidrawElements(STARTER_STAGING_ELEMENTS, {
+            regenerateIds: false,
+          }),
           appState: { viewBackgroundColor: "#fffdf8" },
         },
         onChange: handleExcalidrawChange,
       }),
       React.createElement(
         "div",
-        { className: `stage-overlay ${(captionText || listening) && isLive ? "visible" : ""}`, "aria-hidden": "true" },
+        {
+          className: `stage-overlay ${(captionText || listening) && isLive ? "visible" : ""}`,
+          "aria-hidden": "true",
+        },
         captionText
           ? React.createElement(
               "div",
-              { className: "caption-pill", role: "status", "aria-live": "polite" },
+              {
+                className: "caption-pill",
+                role: "status",
+                "aria-live": "polite",
+              },
               truncateCaption(captionText),
             )
           : null,
@@ -621,7 +703,9 @@ function App() {
               {
                 type: "button",
                 className: `mode-toggle-option ${mode === "staging" ? "active" : ""}`,
-                onClick: () => { if (mode !== "staging") backToStaging(); },
+                onClick: () => {
+                  if (mode !== "staging") backToStaging();
+                },
                 disabled: presoStarting,
                 title: "Staging mode",
                 "aria-pressed": mode === "staging",
@@ -633,7 +717,9 @@ function App() {
               {
                 type: "button",
                 className: `mode-toggle-option ${mode === "live" ? "active" : ""}`,
-                onClick: () => { if (mode !== "live") startPreso(); },
+                onClick: () => {
+                  if (mode !== "live") startPreso();
+                },
                 disabled: presoStarting,
                 title: presoStarting ? "Starting..." : "Preso mode",
                 "aria-pressed": mode === "live",
@@ -646,8 +732,8 @@ function App() {
           "p",
           null,
           mode === "staging"
-            ? "Drop reference material on the canvas, then start the preso."
-            : "Talk through an idea and let the whiteboard keep up.",
+            ? "Drop keywords, diagrams, or images on the canvas. They will be used as reference during the preso."
+            : "Just talk through your ideas. Let the agent whiteboard for you.",
         ),
       ),
       React.createElement(
@@ -676,14 +762,21 @@ function App() {
                   {
                     className: `record-toggle ${listening ? "recording" : ""}`,
                     onClick: toggleListening,
-                    disabled: starting || (warmupState.state === "running" && !listening),
-                    title: warmupState.state === "running"
-                      ? "Waiting for prompt cache to warm up"
-                      : warmupState.state === "exhausted"
-                        ? "Cache didn't fully prime; first turn may be slower"
-                        : undefined,
+                    disabled:
+                      starting ||
+                      (warmupState.state === "running" && !listening),
+                    title:
+                      warmupState.state === "running"
+                        ? "Waiting for prompt cache to warm up"
+                        : warmupState.state === "exhausted"
+                          ? "Cache didn't fully prime; first turn may be slower"
+                          : undefined,
                   },
-                  React.createElement("span", { className: "record-icon" }, listening ? "■" : "●"),
+                  React.createElement(
+                    "span",
+                    { className: "record-icon" },
+                    listening ? "■" : "●",
+                  ),
                   " ",
                   listening
                     ? "Stop"
@@ -698,8 +791,12 @@ function App() {
                   {
                     className: "fullscreen-toggle",
                     onClick: toggleFullscreen,
-                    title: isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen for screen sharing",
-                    "aria-label": isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
+                    title: isFullscreen
+                      ? "Exit fullscreen (Esc)"
+                      : "Fullscreen for screen sharing",
+                    "aria-label": isFullscreen
+                      ? "Exit fullscreen"
+                      : "Enter fullscreen",
                   },
                   fullscreenIcon(isFullscreen),
                 ),
@@ -710,7 +807,8 @@ function App() {
                     {
                       className: "warmup-skip",
                       onClick: startAnyway,
-                      title: "Skip warmup and start listening now. The first turn may be slower.",
+                      title:
+                        "Skip warmup and start listening now. The first turn may be slower.",
                     },
                     "Start Anyway →",
                   )
@@ -730,13 +828,18 @@ function App() {
             className: `reset-session ${resetConfirming ? "confirming" : ""}`,
             onClick: handleResetClick,
             disabled: resetting,
-            title: mode === "staging"
-              ? "Clear the staging area"
-              : "Clear the whiteboard and start a new session",
+            title:
+              mode === "staging"
+                ? "Clear the staging area"
+                : "Clear the whiteboard and start a new session",
           },
-          resetting ? "Resetting..." : resetConfirming
-            ? "Click again to reset"
-            : mode === "staging" ? "Reset Staging" : "Reset Session",
+          resetting
+            ? "Resetting..."
+            : resetConfirming
+              ? "Click again to reset"
+              : mode === "staging"
+                ? "Reset Staging"
+                : "Reset Session",
         ),
       ),
       React.createElement(
@@ -764,42 +867,56 @@ function App() {
           value: sttLabel,
           expanded: expandedRow === "stt",
           onToggle: () => setExpandedRow(expandedRow === "stt" ? null : "stt"),
-          editor: settings ? React.createElement(TranscriptionEditor, {
-            settings,
-            onSave: async (patch) => {
-              await saveSettings(patch);
-              setExpandedRow(null);
-            },
-            onCancel: () => setExpandedRow(null),
-          }) : null,
+          editor: settings
+            ? React.createElement(TranscriptionEditor, {
+                settings,
+                onSave: async (patch) => {
+                  await saveSettings(patch);
+                  setExpandedRow(null);
+                },
+                onCancel: () => setExpandedRow(null),
+              })
+            : null,
         }),
         statusRow({
           dotState: agentState,
           label: "Agent",
           value: agentLabel,
           expanded: expandedRow === "agent",
-          onToggle: () => setExpandedRow(expandedRow === "agent" ? null : "agent"),
-          editor: settings ? React.createElement(AgentEditor, {
-            settings,
-            onSave: async (patch) => {
-              await saveSettings(patch);
-              setExpandedRow(null);
-            },
-            onCancel: () => setExpandedRow(null),
-          }) : null,
+          onToggle: () =>
+            setExpandedRow(expandedRow === "agent" ? null : "agent"),
+          editor: settings
+            ? React.createElement(AgentEditor, {
+                settings,
+                onSave: async (patch) => {
+                  await saveSettings(patch);
+                  setExpandedRow(null);
+                },
+                onCancel: () => setExpandedRow(null),
+              })
+            : null,
         }),
       ),
+      isLive && cost ? React.createElement(CostCard, { cost }) : null,
       mode === "staging"
         ? React.createElement(
             "div",
             { className: "agent-instructions" },
-            React.createElement("label", { className: "agent-instructions-label", htmlFor: "agent-instructions-input" }, "Agent instructions"),
+            React.createElement(
+              "label",
+              {
+                className: "agent-instructions-label",
+                htmlFor: "agent-instructions-input",
+              },
+              "Agent instructions",
+            ),
             React.createElement("textarea", {
               id: "agent-instructions-input",
               className: "agent-instructions-input",
               value: agentInstructions,
               onChange: (e) => handleAgentInstructionsChange(e.target.value),
-              placeholder: "Optional. Tell the agent your preferences - e.g. 'Use a tight 4-color palette', 'Prefer drawings over text', 'Be funny'.",
+              placeholder:
+                "Optional. Tell the agent your preferences - e.g. 'Use a tight 4-color palette', 'Prefer drawings over text', 'Be funny'.",
               rows: 4,
               spellCheck: true,
             }),
@@ -912,10 +1029,132 @@ function Waveform({ analyser, active }) {
     };
   }, [analyser, active]);
 
-  return React.createElement("canvas", { ref: canvasRef, className: "waveform-canvas" });
+  return React.createElement("canvas", {
+    ref: canvasRef,
+    className: "waveform-canvas",
+  });
 }
 
-function statusRow({ dotState, label, value, expanded = false, onToggle, editor }) {
+function CostCard({ cost }) {
+  const agent = cost.agent ?? {};
+  const stt = cost.transcription ?? {};
+  const total = (agent.priced ? agent.cost : 0) + (stt.priced ? stt.cost : 0);
+  return React.createElement(
+    "div",
+    { className: "cost-card" },
+    React.createElement(
+      "div",
+      { className: "cost-card-header" },
+      React.createElement(
+        "span",
+        { className: "cost-card-title" },
+        "Session cost",
+      ),
+      React.createElement(
+        "span",
+        {
+          className: "cost-card-total",
+          title: "Sum of priced agent + transcription costs",
+        },
+        formatUsd(total),
+      ),
+    ),
+    React.createElement(CostRow, {
+      label: "Agent",
+      sub: costSubtitle(agent),
+      value: costValue(agent),
+      title: agentTokenTooltip(agent),
+    }),
+    React.createElement(CostRow, {
+      label: "Voice",
+      sub: costSubtitle(stt),
+      value: costValue(stt),
+      title: transcriptionTooltip(stt),
+    }),
+  );
+}
+
+function CostRow({ label, sub, value, title }) {
+  return React.createElement(
+    "div",
+    { className: "cost-row", title: title || undefined },
+    React.createElement(
+      "div",
+      { className: "cost-row-left" },
+      React.createElement("span", { className: "cost-row-label" }, label),
+      sub
+        ? React.createElement("span", { className: "cost-row-sub" }, sub)
+        : null,
+    ),
+    React.createElement("span", { className: "cost-row-value" }, value),
+  );
+}
+
+function costSubtitle(entry) {
+  if (!entry?.provider) return "";
+  if (entry.provider === "moonshine")
+    return `${entry.model ?? ""} (local)`.trim();
+  if (entry.provider === "ollama") return `${entry.model ?? ""} (local)`.trim();
+  if (entry.provider === "codex")
+    return `${entry.model ?? ""} (subscription)`.trim();
+  return entry.model ?? "";
+}
+
+function costValue(entry) {
+  if (!entry?.provider) return "$0.0000";
+  if (!entry.priced) {
+    if (entry.reason === "local") return "$0.0000";
+    // Codex routes through the user's ChatGPT subscription, so there's no
+    // per-token dollar cost we can report. Show usage volume instead so the
+    // panel still surfaces "is the agent doing work?".
+    if (entry.reason === "subscription") return formatTokenCount(entry.tokens);
+    return "n/a";
+  }
+  return formatUsd(entry.cost ?? 0);
+}
+
+function formatUsd(value) {
+  if (typeof value !== "number" || !isFinite(value)) return "$0.0000";
+  if (value === 0) return "$0.0000";
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toFixed(3)}`;
+}
+
+function formatTokenCount(tokens) {
+  const total =
+    (tokens?.input ?? 0) + (tokens?.output ?? 0) + (tokens?.reasoning ?? 0);
+  if (total === 0) return "0 tok";
+  if (total < 1000) return `${total} tok`;
+  if (total < 1_000_000) {
+    const k = total / 1000;
+    return `${k < 10 ? k.toFixed(1) : Math.round(k)}k tok`;
+  }
+  return `${(total / 1_000_000).toFixed(1)}M tok`;
+}
+
+function agentTokenTooltip(entry) {
+  if (!entry?.tokens) return "";
+  const t = entry.tokens;
+  const total = (t.input ?? 0) + (t.output ?? 0) + (t.reasoning ?? 0);
+  if (total === 0) return "";
+  return `input ${t.input ?? 0} (cached ${t.cached ?? 0}) + output ${t.output ?? 0}${t.reasoning ? ` + reasoning ${t.reasoning}` : ""} tokens`;
+}
+
+function transcriptionTooltip(entry) {
+  if (!entry?.seconds) return "";
+  const seconds = entry.seconds;
+  const minutes = seconds / 60;
+  return `${minutes.toFixed(2)} minutes of audio sent`;
+}
+
+function statusRow({
+  dotState,
+  label,
+  value,
+  expanded = false,
+  onToggle,
+  editor,
+}) {
   const clickable = Boolean(onToggle);
   return React.createElement(
     "div",
@@ -927,14 +1166,39 @@ function statusRow({ dotState, label, value, expanded = false, onToggle, editor 
         onClick: clickable ? onToggle : undefined,
         role: clickable ? "button" : undefined,
         tabIndex: clickable ? 0 : undefined,
-        onKeyDown: clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } } : undefined,
+        onKeyDown: clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onToggle();
+              }
+            }
+          : undefined,
       },
-      React.createElement("span", { className: `dot ${dotState}`, "aria-hidden": "true" }),
+      React.createElement("span", {
+        className: `dot ${dotState}`,
+        "aria-hidden": "true",
+      }),
       React.createElement("span", { className: "label" }, label),
-      React.createElement("span", { className: "value", title: typeof value === "string" ? value : undefined }, value),
-      clickable ? React.createElement("span", { className: "chevron", "aria-hidden": "true" }, "›") : null,
+      React.createElement(
+        "span",
+        {
+          className: "value",
+          title: typeof value === "string" ? value : undefined,
+        },
+        value,
+      ),
+      clickable
+        ? React.createElement(
+            "span",
+            { className: "chevron", "aria-hidden": "true" },
+            "›",
+          )
+        : null,
     ),
-    expanded && editor ? React.createElement("div", { className: "editor" }, editor) : null,
+    expanded && editor
+      ? React.createElement("div", { className: "editor" }, editor)
+      : null,
   );
 }
 
@@ -946,7 +1210,8 @@ function agentModelLabel(settings) {
 }
 
 function sttModelLabel(settings) {
-  if (settings.transcription.provider === "moonshine") return settings.transcription.moonshine.model;
+  if (settings.transcription.provider === "moonshine")
+    return settings.transcription.moonshine.model;
   return settings.transcription.openai.model;
 }
 
@@ -970,7 +1235,9 @@ function MicEditor({ currentDeviceId, onSave, onCancel }) {
         if (!cancelled) setErrorText(err.message);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function grantPermission() {
@@ -998,44 +1265,85 @@ function MicEditor({ currentDeviceId, onSave, onCancel }) {
   return React.createElement(
     "div",
     { className: "editor-grid" },
-    needsPermission ? React.createElement(
-      "div",
-      { className: "editor-hint" },
-      "Grant microphone access to see device names.",
-      React.createElement("button", { className: "secondary", onClick: grantPermission, disabled: busy, style: { marginLeft: "8px" } }, busy ? "..." : "Grant"),
-    ) : null,
-    field("Device", React.createElement(
-      "select",
-      { value: selected, onChange: (e) => setSelected(e.target.value), disabled: busy },
-      React.createElement("option", { value: "" }, "System default"),
-      devices.map((d) => React.createElement(
-        "option",
-        { key: d.deviceId, value: d.deviceId },
-        d.label || `Device ${d.deviceId.slice(0, 8)}`,
-      )),
-    )),
-    errorText ? React.createElement("div", { className: "editor-error" }, errorText) : null,
+    needsPermission
+      ? React.createElement(
+          "div",
+          { className: "editor-hint" },
+          "Grant microphone access to see device names.",
+          React.createElement(
+            "button",
+            {
+              className: "secondary",
+              onClick: grantPermission,
+              disabled: busy,
+              style: { marginLeft: "8px" },
+            },
+            busy ? "..." : "Grant",
+          ),
+        )
+      : null,
+    field(
+      "Device",
+      React.createElement(
+        "select",
+        {
+          value: selected,
+          onChange: (e) => setSelected(e.target.value),
+          disabled: busy,
+        },
+        React.createElement("option", { value: "" }, "System default"),
+        devices.map((d) =>
+          React.createElement(
+            "option",
+            { key: d.deviceId, value: d.deviceId },
+            d.label || `Device ${d.deviceId.slice(0, 8)}`,
+          ),
+        ),
+      ),
+    ),
+    errorText
+      ? React.createElement("div", { className: "editor-error" }, errorText)
+      : null,
     React.createElement(
       "div",
       { className: "editor-actions" },
-      React.createElement("button", { className: "secondary", onClick: onCancel, disabled: busy }, "Cancel"),
-      React.createElement("button", { onClick: submit, disabled: busy }, "Save"),
+      React.createElement(
+        "button",
+        { className: "secondary", onClick: onCancel, disabled: busy },
+        "Cancel",
+      ),
+      React.createElement(
+        "button",
+        { onClick: submit, disabled: busy },
+        "Save",
+      ),
     ),
   );
 }
 
 function AgentEditor({ settings, onSave, onCancel }) {
   const [provider, setProvider] = React.useState(settings.agent.provider);
-  const [openaiModel, setOpenaiModel] = React.useState(settings.agent.openai.model);
-  const [reasoningEffort, setReasoningEffort] = React.useState(settings.agent.openai.reasoningEffort);
-  const [codexModel, setCodexModel] = React.useState(settings.agent.codex.model);
-  const [ollamaModel, setOllamaModel] = React.useState(settings.agent.ollama.model);
-  const [ollamaBaseURL, setOllamaBaseURL] = React.useState(settings.agent.ollama.baseURL);
+  const [openaiModel, setOpenaiModel] = React.useState(
+    settings.agent.openai.model,
+  );
+  const [reasoningEffort, setReasoningEffort] = React.useState(
+    settings.agent.openai.reasoningEffort,
+  );
+  const [codexModel, setCodexModel] = React.useState(
+    settings.agent.codex.model,
+  );
+  const [ollamaModel, setOllamaModel] = React.useState(
+    settings.agent.ollama.model,
+  );
+  const [ollamaBaseURL, setOllamaBaseURL] = React.useState(
+    settings.agent.ollama.baseURL,
+  );
   const [openaiKey, setOpenaiKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [errorText, setErrorText] = React.useState("");
 
-  const needsOpenAIKey = provider === "openai" && !settings.hasOpenAIKey && !openaiKey;
+  const needsOpenAIKey =
+    provider === "openai" && !settings.hasOpenAIKey && !openaiKey;
 
   async function submit() {
     setBusy(true);
@@ -1062,53 +1370,128 @@ function AgentEditor({ settings, onSave, onCancel }) {
   return React.createElement(
     "div",
     { className: "editor-grid" },
-    field("Provider", React.createElement(
-      "select",
-      { value: provider, onChange: (e) => setProvider(e.target.value), disabled: busy },
-      React.createElement("option", { value: "openai" }, "OpenAI"),
-      React.createElement("option", { value: "codex" }, "Codex"),
-      React.createElement("option", { value: "ollama" }, "Ollama"),
-    )),
-    provider === "openai" ? field("Model", select(openaiModel, setOpenaiModel, OPENAI_AGENT_MODELS, busy)) : null,
-    provider === "openai" ? field("Reasoning", select(reasoningEffort, setReasoningEffort, REASONING_EFFORTS, busy)) : null,
-    provider === "codex" ? field("Model", select(codexModel, setCodexModel, CODEX_AGENT_MODELS, busy)) : null,
-    provider === "ollama" ? field("Model", React.createElement("input", {
-      type: "text", value: ollamaModel, onChange: (e) => setOllamaModel(e.target.value), placeholder: "e.g. llama3.2", disabled: busy,
-    })) : null,
-    provider === "ollama" ? field("Base URL", React.createElement("input", {
-      type: "text", value: ollamaBaseURL, onChange: (e) => setOllamaBaseURL(e.target.value), disabled: busy,
-    })) : null,
-    needsOpenAIKey ? field("OpenAI key", React.createElement("input", {
-      type: "password", value: openaiKey, onChange: (e) => setOpenaiKey(e.target.value), placeholder: "sk-...", disabled: busy,
-    })) : null,
-    provider === "openai" && settings.hasOpenAIKey ? field("OpenAI key", React.createElement("input", {
-      type: "password", value: openaiKey, onChange: (e) => setOpenaiKey(e.target.value), placeholder: "configured (enter to replace)", disabled: busy,
-    })) : null,
-    errorText ? React.createElement("div", { className: "editor-error" }, errorText) : null,
+    field(
+      "Provider",
+      React.createElement(
+        "select",
+        {
+          value: provider,
+          onChange: (e) => setProvider(e.target.value),
+          disabled: busy,
+        },
+        React.createElement("option", { value: "openai" }, "OpenAI"),
+        React.createElement("option", { value: "codex" }, "Codex"),
+        React.createElement("option", { value: "ollama" }, "Ollama"),
+      ),
+    ),
+    provider === "openai"
+      ? field(
+          "Model",
+          select(openaiModel, setOpenaiModel, OPENAI_AGENT_MODELS, busy),
+        )
+      : null,
+    provider === "openai"
+      ? field(
+          "Reasoning",
+          select(reasoningEffort, setReasoningEffort, REASONING_EFFORTS, busy),
+        )
+      : null,
+    provider === "codex"
+      ? field(
+          "Model",
+          select(codexModel, setCodexModel, CODEX_AGENT_MODELS, busy),
+        )
+      : null,
+    provider === "ollama"
+      ? field(
+          "Model",
+          React.createElement("input", {
+            type: "text",
+            value: ollamaModel,
+            onChange: (e) => setOllamaModel(e.target.value),
+            placeholder: "e.g. llama3.2",
+            disabled: busy,
+          }),
+        )
+      : null,
+    provider === "ollama"
+      ? field(
+          "Base URL",
+          React.createElement("input", {
+            type: "text",
+            value: ollamaBaseURL,
+            onChange: (e) => setOllamaBaseURL(e.target.value),
+            disabled: busy,
+          }),
+        )
+      : null,
+    needsOpenAIKey
+      ? field(
+          "OpenAI key",
+          React.createElement("input", {
+            type: "password",
+            value: openaiKey,
+            onChange: (e) => setOpenaiKey(e.target.value),
+            placeholder: "sk-...",
+            disabled: busy,
+          }),
+        )
+      : null,
+    provider === "openai" && settings.hasOpenAIKey
+      ? field(
+          "OpenAI key",
+          React.createElement("input", {
+            type: "password",
+            value: openaiKey,
+            onChange: (e) => setOpenaiKey(e.target.value),
+            placeholder: "configured (enter to replace)",
+            disabled: busy,
+          }),
+        )
+      : null,
+    errorText
+      ? React.createElement("div", { className: "editor-error" }, errorText)
+      : null,
     React.createElement(
       "div",
       { className: "editor-actions" },
-      React.createElement("button", { className: "secondary", onClick: onCancel, disabled: busy }, "Cancel"),
-      React.createElement("button", { onClick: submit, disabled: busy || needsOpenAIKey }, busy ? "Saving..." : "Save"),
+      React.createElement(
+        "button",
+        { className: "secondary", onClick: onCancel, disabled: busy },
+        "Cancel",
+      ),
+      React.createElement(
+        "button",
+        { onClick: submit, disabled: busy || needsOpenAIKey },
+        busy ? "Saving..." : "Save",
+      ),
     ),
   );
 }
 
 function TranscriptionEditor({ settings, onSave, onCancel }) {
-  const [provider, setProvider] = React.useState(settings.transcription.provider);
-  const [moonshineModel, setMoonshineModel] = React.useState(settings.transcription.moonshine.model);
-  const [openaiModel, setOpenaiModel] = React.useState(settings.transcription.openai.model);
+  const [provider, setProvider] = React.useState(
+    settings.transcription.provider,
+  );
+  const [moonshineModel, setMoonshineModel] = React.useState(
+    settings.transcription.moonshine.model,
+  );
+  const [openaiModel, setOpenaiModel] = React.useState(
+    settings.transcription.openai.model,
+  );
   const [openaiKey, setOpenaiKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [errorText, setErrorText] = React.useState("");
 
-  const needsOpenAIKey = provider === "openai" && !settings.hasOpenAIKey && !openaiKey;
+  const needsOpenAIKey =
+    provider === "openai" && !settings.hasOpenAIKey && !openaiKey;
 
   async function submit() {
     setBusy(true);
     setErrorText("");
     const patch = { transcription: { provider, moonshine: {}, openai: {} } };
-    if (provider === "moonshine") patch.transcription.moonshine.model = moonshineModel;
+    if (provider === "moonshine")
+      patch.transcription.moonshine.model = moonshineModel;
     if (provider === "openai") patch.transcription.openai.model = openaiModel;
     if (openaiKey) patch.apiKeys = { openai: openaiKey };
     try {
@@ -1122,26 +1505,80 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
   return React.createElement(
     "div",
     { className: "editor-grid" },
-    field("Provider", React.createElement(
-      "select",
-      { value: provider, onChange: (e) => setProvider(e.target.value), disabled: busy },
-      React.createElement("option", { value: "moonshine" }, "Moonshine (local)"),
-      React.createElement("option", { value: "openai" }, "OpenAI Realtime"),
-    )),
-    provider === "moonshine" ? field("Model", select(moonshineModel, setMoonshineModel, MOONSHINE_MODELS, busy)) : null,
-    provider === "openai" ? field("Model", select(openaiModel, setOpenaiModel, OPENAI_TRANSCRIPTION_MODELS, busy)) : null,
-    needsOpenAIKey ? field("OpenAI key", React.createElement("input", {
-      type: "password", value: openaiKey, onChange: (e) => setOpenaiKey(e.target.value), placeholder: "sk-...", disabled: busy,
-    })) : null,
-    provider === "openai" && settings.hasOpenAIKey ? field("OpenAI key", React.createElement("input", {
-      type: "password", value: openaiKey, onChange: (e) => setOpenaiKey(e.target.value), placeholder: "configured (enter to replace)", disabled: busy,
-    })) : null,
-    errorText ? React.createElement("div", { className: "editor-error" }, errorText) : null,
+    field(
+      "Provider",
+      React.createElement(
+        "select",
+        {
+          value: provider,
+          onChange: (e) => setProvider(e.target.value),
+          disabled: busy,
+        },
+        React.createElement(
+          "option",
+          { value: "moonshine" },
+          "Moonshine (local)",
+        ),
+        React.createElement("option", { value: "openai" }, "OpenAI Realtime"),
+      ),
+    ),
+    provider === "moonshine"
+      ? field(
+          "Model",
+          select(moonshineModel, setMoonshineModel, MOONSHINE_MODELS, busy),
+        )
+      : null,
+    provider === "openai"
+      ? field(
+          "Model",
+          select(
+            openaiModel,
+            setOpenaiModel,
+            OPENAI_TRANSCRIPTION_MODELS,
+            busy,
+          ),
+        )
+      : null,
+    needsOpenAIKey
+      ? field(
+          "OpenAI key",
+          React.createElement("input", {
+            type: "password",
+            value: openaiKey,
+            onChange: (e) => setOpenaiKey(e.target.value),
+            placeholder: "sk-...",
+            disabled: busy,
+          }),
+        )
+      : null,
+    provider === "openai" && settings.hasOpenAIKey
+      ? field(
+          "OpenAI key",
+          React.createElement("input", {
+            type: "password",
+            value: openaiKey,
+            onChange: (e) => setOpenaiKey(e.target.value),
+            placeholder: "configured (enter to replace)",
+            disabled: busy,
+          }),
+        )
+      : null,
+    errorText
+      ? React.createElement("div", { className: "editor-error" }, errorText)
+      : null,
     React.createElement(
       "div",
       { className: "editor-actions" },
-      React.createElement("button", { className: "secondary", onClick: onCancel, disabled: busy }, "Cancel"),
-      React.createElement("button", { onClick: submit, disabled: busy || needsOpenAIKey }, busy ? "Saving..." : "Save"),
+      React.createElement(
+        "button",
+        { className: "secondary", onClick: onCancel, disabled: busy },
+        "Cancel",
+      ),
+      React.createElement(
+        "button",
+        { onClick: submit, disabled: busy || needsOpenAIKey },
+        busy ? "Saving..." : "Save",
+      ),
     ),
   );
 }
@@ -1159,7 +1596,9 @@ function select(value, onChange, options, disabled) {
   return React.createElement(
     "select",
     { value, onChange: (e) => onChange(e.target.value), disabled },
-    options.map((option) => React.createElement("option", { key: option, value: option }, option)),
+    options.map((option) =>
+      React.createElement("option", { key: option, value: option }, option),
+    ),
   );
 }
 
@@ -1254,8 +1693,11 @@ function nativeElementsToSkeletonForSync(nativeElements) {
       continue;
     }
 
-    const boundElements = Array.isArray(el.boundElements) ? el.boundElements : null;
-    const textBinding = boundElements && boundElements.find((b) => b?.type === "text");
+    const boundElements = Array.isArray(el.boundElements)
+      ? el.boundElements
+      : null;
+    const textBinding =
+      boundElements && boundElements.find((b) => b?.type === "text");
     const labelText = textBinding && byId.get(textBinding.id);
 
     if (labelText) {
@@ -1280,8 +1722,19 @@ function stripInternalFields(el) {
   // Drop Excalidraw fields that change on every render (cache thrash) or that
   // we don't want the agent reasoning about (locking, grouping, etc.).
   const {
-    versionNonce, version, updated, seed, index, link, locked, customData,
-    frameId, groupIds, boundElements, containerId, isDeleted,
+    versionNonce,
+    version,
+    updated,
+    seed,
+    index,
+    link,
+    locked,
+    customData,
+    frameId,
+    groupIds,
+    boundElements,
+    containerId,
+    isDeleted,
     ...rest
   } = el;
   return rest;

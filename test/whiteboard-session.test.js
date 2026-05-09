@@ -27,13 +27,19 @@ test("isTrivialTranscript keeps real content", () => {
   assert.equal(isTrivialTranscript("Done!"), false, "single 4-letter command is real content");
 });
 
-test("whiteboard session batches consecutive transcript chunks into one turn", async () => {
+test("whiteboard session buffers transcript chunks that arrive while the agent is mid-turn", async () => {
+  // The queue runs without its own debounce now (delta-quiet upstream owns
+  // turn boundaries), so the first chunk fires immediately. While that turn
+  // is in flight, subsequent chunks buffer and concatenate into the next
+  // turn rather than serializing into N separate agent calls.
   const turns = [];
   const session = createWhiteboardSession({
     options: {},
     wss: { clients: new Set() },
     runAgent: async ({ transcript }) => {
       turns.push(transcript);
+      // Hold the first turn long enough for the next two chunks to land.
+      await new Promise((resolve) => setTimeout(resolve, 20));
     },
   });
   session.mode = "live";
@@ -44,8 +50,7 @@ test("whiteboard session batches consecutive transcript chunks into one turn", a
 
   await session.idle();
 
-  // All three chunks should batch into a single turn (debounce coalesces them).
-  assert.deepEqual(turns, ["first\nsecond\nthird"]);
+  assert.deepEqual(turns, ["first", "second\nthird"]);
 });
 
 test("whiteboard session stores latest browser screenshot for later agent turns", async () => {

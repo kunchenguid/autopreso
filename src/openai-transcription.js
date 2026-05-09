@@ -4,6 +4,42 @@ import { buildTranscriptionVocabularyPrompt } from "./whiteboard-keywords.js";
 
 const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 
+// Models that reject the `prompt` parameter. For these we silently skip
+// vocabulary biasing rather than failing the whole session.update.
+// (Verified empirically via scripts/probe-openai-realtime.js - gpt-realtime-whisper
+// returns "The 'prompt' parameter is not supported for this model".)
+const MODELS_WITHOUT_PROMPT_SUPPORT = new Set(["gpt-realtime-whisper"]);
+
+// We don't trust transcription.completed to drive agent turns. Some models
+// (notably gpt-realtime-whisper) wipe turn_detection on every session.update,
+// so server-VAD never auto-commits and completed never fires until the user
+// clicks Stop. Instead, we drive turns purely from delta arrival timing:
+// when no new delta arrives within DEFAULT_DELTA_QUIET_MS, the accumulated
+// partial is queued as one turn. This is provider-agnostic and reacts
+// faster than waiting for completed (saves an API roundtrip per utterance).
+//
+// This is the *only* debounce in the transcript path - the turn queue runs
+// straight-through. 1000ms is long enough to ride through typical
+// mid-sentence breaths without splitting one thought into multiple turns.
+const DEFAULT_DELTA_QUIET_MS = 1000;
+
+function buildTranscriptionSession(model, vocabularyPrompt, { includeEmptyPrompt = false } = {}) {
+  const transcription = { model };
+  if (!MODELS_WITHOUT_PROMPT_SUPPORT.has(model)) {
+    if (vocabularyPrompt) transcription.prompt = vocabularyPrompt;
+    else if (includeEmptyPrompt) transcription.prompt = "";
+  }
+  return {
+    type: "transcription",
+    audio: {
+      input: {
+        format: { type: "audio/pcm", rate: 24000 },
+        transcription,
+      },
+    },
+  };
+}
+
 export function createOpenAITranscription({
   sendTranscript,
   queueTranscript,
@@ -21,6 +57,44 @@ export function createOpenAITranscription({
   let partialText = "";
   let bufferedSinceCommit = false;
   let vocabularyPrompt = "";
+  let deltaQuietTimer = null;
+  const deltaQuietMs = Number.isFinite(options.openaiDeltaQuietMs)
+    ? options.openaiDeltaQuietMs
+    : DEFAULT_DELTA_QUIET_MS;
+
+  function cancelDeltaQuietTimer() {
+    if (deltaQuietTimer) {
+      clearTimeout(deltaQuietTimer);
+      deltaQuietTimer = null;
+    }
+  }
+
+  // Drain the accumulated partial as one agent turn. Idempotent: if the
+  // partial is empty (already flushed), do nothing.
+  function flushPartialAsTurn() {
+    cancelDeltaQuietTimer();
+    const text = partialText.trim();
+    if (!text) return;
+    partialText = "";
+    sendTranscript({ type: "transcript:committed", text });
+    queueTranscript(text);
+    // Commit OpenAI's audio buffer so the next utterance's deltas start
+    // from a clean state (otherwise the buffer would grow without bound and
+    // delta semantics could drift).
+    if (socket && configured && bufferedSinceCommit) {
+      socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+      bufferedSinceCommit = false;
+    }
+  }
+
+  function scheduleDeltaQuietFlush() {
+    cancelDeltaQuietTimer();
+    if (deltaQuietMs <= 0) return;
+    deltaQuietTimer = setTimeout(() => {
+      deltaQuietTimer = null;
+      flushPartialAsTurn();
+    }, deltaQuietMs);
+  }
 
   function ensureSocket() {
     if (socket) return socket;
@@ -43,19 +117,9 @@ export function createOpenAITranscription({
 
     socket.on("open", () => {
       configured = true;
-      const transcription = { model: options.openaiTranscriptionModel };
-      if (vocabularyPrompt) transcription.prompt = vocabularyPrompt;
       socket.send(JSON.stringify({
         type: "session.update",
-        session: {
-          type: "transcription",
-          audio: {
-            input: {
-              format: { type: "audio/pcm", rate: 24000 },
-              transcription,
-            },
-          },
-        },
+        session: buildTranscriptionSession(options.openaiTranscriptionModel, vocabularyPrompt),
       }));
       for (const audio of pendingAudio) {
         socket.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
@@ -66,11 +130,24 @@ export function createOpenAITranscription({
     socket.on("message", (raw) => {
       handleSocketMessage(raw.toString("utf8"), {
         sendTranscript,
-        queueTranscript,
-        onReady: () => resolveReady?.(),
         getPartial: () => partialText,
         setPartial: (value) => { partialText = value; },
-        onBufferDrained: () => { bufferedSinceCommit = false; },
+        onReady: () => resolveReady?.(),
+        onBufferDrained: () => {
+          bufferedSinceCommit = false;
+        },
+        onDelta: () => {
+          // Re-arm the quiet timer on every delta. When deltas stop arriving
+          // for deltaQuietMs, flushPartialAsTurn fires and the agent runs.
+          if (partialText) scheduleDeltaQuietFlush();
+        },
+        onCompleted: () => {
+          // Fallback: if our quiet timer hasn't fired yet (e.g., user clicked
+          // Stop and the server's manual commit produced a completed event
+          // before deltaQuietMs elapsed), drain whatever partial we still
+          // have. flushPartialAsTurn is idempotent.
+          flushPartialAsTurn();
+        },
       });
     });
 
@@ -81,6 +158,7 @@ export function createOpenAITranscription({
 
     socket.on("close", () => {
       rejectReady?.(new Error("OpenAI realtime socket closed before it was ready."));
+      cancelDeltaQuietTimer();
       socket = null;
       readyPromise = null;
       resolveReady = null;
@@ -136,30 +214,26 @@ export function createOpenAITranscription({
         log.debug?.(`[openai-transcription] vocabulary prompt cleared`);
       }
       if (!socket || !configured) return;
+      // Re-state audio.input.format on every follow-up so a partial update
+      // can't accidentally wipe it. Pass includeEmptyPrompt: true so we can
+      // clear a previously-set prompt by sending an explicit empty string.
       socket.send(JSON.stringify({
         type: "session.update",
-        session: {
-          type: "transcription",
-          audio: {
-            input: {
-              transcription: {
-                model: options.openaiTranscriptionModel,
-                prompt: vocabularyPrompt,
-              },
-            },
-          },
-        },
+        session: buildTranscriptionSession(options.openaiTranscriptionModel, vocabularyPrompt, { includeEmptyPrompt: true }),
       }));
     },
     stop: () => {
+      // Stop is a hard signal that the user wants whatever they've said
+      // queued NOW. Flush any pending partial as a turn (idempotent), and
+      // make sure the OpenAI buffer is committed if we still hold audio.
+      flushPartialAsTurn();
       if (!socket || !configured) return;
-      // If server-side VAD already auto-committed (or no audio was sent), skip the manual
-      // commit - OpenAI rejects commits on empty buffers with "buffer too small".
       if (!bufferedSinceCommit) return;
       socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
       bufferedSinceCommit = false;
     },
     close: () => {
+      cancelDeltaQuietTimer();
       if (!socket) return;
       socket.close();
       socket = null;
@@ -167,7 +241,7 @@ export function createOpenAITranscription({
   };
 }
 
-function handleSocketMessage(line, { sendTranscript, queueTranscript, onReady, getPartial, setPartial, onBufferDrained }) {
+function handleSocketMessage(line, { sendTranscript, getPartial, setPartial, onReady, onBufferDrained, onDelta, onCompleted }) {
   if (!line.trim()) return;
 
   let message;
@@ -192,15 +266,17 @@ function handleSocketMessage(line, { sendTranscript, queueTranscript, onReady, g
     const next = getPartial() + (message.delta ?? "");
     setPartial(next);
     sendTranscript({ type: "transcript:partial", text: next });
+    onDelta?.();
     return;
   }
 
   if (message.type === "conversation.item.input_audio_transcription.completed") {
-    const text = message.transcript ?? "";
-    setPartial("");
+    // We do NOT use completed to drive agent turns - delta-quiet does that.
+    // completed is a fallback for the rare case where deltas stopped without
+    // our quiet timer having fired (e.g., Stop click). Pass to onCompleted
+    // which calls flushPartialAsTurn (idempotent).
     onBufferDrained?.();
-    sendTranscript({ type: "transcript:committed", text });
-    queueTranscript(text);
+    onCompleted?.();
     return;
   }
 
