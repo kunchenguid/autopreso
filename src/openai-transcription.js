@@ -1,5 +1,7 @@
 import { WebSocket } from "ws";
 
+import { buildTranscriptionVocabularyPrompt } from "./whiteboard-keywords.js";
+
 const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 
 export function createOpenAITranscription({
@@ -8,6 +10,7 @@ export function createOpenAITranscription({
   options,
   env = process.env,
   createWebSocket = (url, protocols, init) => new WebSocket(url, protocols, init),
+  log = console,
 }) {
   let socket = null;
   let readyPromise = null;
@@ -17,6 +20,7 @@ export function createOpenAITranscription({
   let pendingAudio = [];
   let partialText = "";
   let bufferedSinceCommit = false;
+  let vocabularyPrompt = "";
 
   function ensureSocket() {
     if (socket) return socket;
@@ -39,6 +43,8 @@ export function createOpenAITranscription({
 
     socket.on("open", () => {
       configured = true;
+      const transcription = { model: options.openaiTranscriptionModel };
+      if (vocabularyPrompt) transcription.prompt = vocabularyPrompt;
       socket.send(JSON.stringify({
         type: "session.update",
         session: {
@@ -46,7 +52,7 @@ export function createOpenAITranscription({
           audio: {
             input: {
               format: { type: "audio/pcm", rate: 24000 },
-              transcription: { model: options.openaiTranscriptionModel },
+              transcription,
             },
           },
         },
@@ -114,6 +120,36 @@ export function createOpenAITranscription({
       }
       connection.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
       bufferedSinceCommit = true;
+    },
+    /** @param {{ keywords?: string[] | null }} [ctx] */
+    setSessionContext: (ctx) => {
+      const keywords = ctx?.keywords ?? [];
+      const prompt = buildTranscriptionVocabularyPrompt(keywords);
+      // Empty input + nothing to clear: bail. Empty input + a previously
+      // pushed prompt: fall through and emit a clearing session.update.
+      if (!prompt && !vocabularyPrompt) return;
+      if (prompt === vocabularyPrompt) return;
+      vocabularyPrompt = prompt;
+      if (prompt) {
+        log.debug?.(`[openai-transcription] vocabulary prompt set (${keywords.length} terms, ${prompt.length} chars)`);
+      } else {
+        log.debug?.(`[openai-transcription] vocabulary prompt cleared`);
+      }
+      if (!socket || !configured) return;
+      socket.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          type: "transcription",
+          audio: {
+            input: {
+              transcription: {
+                model: options.openaiTranscriptionModel,
+                prompt: vocabularyPrompt,
+              },
+            },
+          },
+        },
+      }));
     },
     stop: () => {
       if (!socket || !configured) return;

@@ -287,6 +287,94 @@ test("createOpenAITranscription surfaces other server error events", () => {
   ]);
 });
 
+test("setSessionContext stashes a vocabulary prompt and folds it into the session.update on open", () => {
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-4o-transcribe" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.setSessionContext({ keywords: ["Kafka", "schema registry"] });
+  transcription.sendAudio("a");
+  socket.emit("open");
+
+  const sessionUpdate = JSON.parse(socket.sent[0]);
+  assert.equal(sessionUpdate.type, "session.update");
+  const prompt = sessionUpdate.session.audio.input.transcription.prompt;
+  assert.ok(typeof prompt === "string" && prompt.length > 0, "expected vocabulary prompt on session.update");
+  assert.match(prompt, /Kafka/);
+  assert.match(prompt, /schema registry/);
+});
+
+test("setSessionContext after the session is configured pushes a follow-up session.update", () => {
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-4o-transcribe" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.sent.length = 0;
+
+  transcription.setSessionContext({ keywords: ["gRPC", "Avro"] });
+
+  const updates = socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "session.update");
+  assert.equal(updates.length, 1, "expected one follow-up session.update with vocabulary prompt");
+  const prompt = updates[0].session.audio.input.transcription.prompt;
+  assert.match(prompt, /gRPC/);
+  assert.match(prompt, /Avro/);
+});
+
+test("setSessionContext with empty keywords is a no-op when no prompt was ever set", () => {
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-4o-transcribe" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  socket.sent.length = 0;
+
+  transcription.setSessionContext({ keywords: [] });
+  transcription.setSessionContext({ keywords: null });
+
+  const updates = socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "session.update");
+  assert.equal(updates.length, 0, "no session.update expected when there was nothing to clear");
+});
+
+test("setSessionContext with empty keywords after a prompt was set clears it server-side", () => {
+  const socket = createMockSocket();
+  const transcription = createOpenAITranscription({
+    sendTranscript: () => {},
+    queueTranscript: () => {},
+    options: { openaiTranscriptionModel: "gpt-4o-transcribe" },
+    env: { OPENAI_API_KEY: "sk-test" },
+    createWebSocket: () => socket,
+  });
+
+  transcription.sendAudio("frame");
+  socket.emit("open");
+  transcription.setSessionContext({ keywords: ["Kafka"] });
+  socket.sent.length = 0;
+
+  transcription.setSessionContext({ keywords: [] });
+
+  const updates = socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "session.update");
+  assert.equal(updates.length, 1, "expected one clearing session.update");
+  assert.equal(updates[0].session.audio.input.transcription.prompt, "", "prompt should be empty string to clear");
+});
+
 test("createOpenAITranscription reports a missing API key without throwing", () => {
   const messages = [];
   const transcription = createOpenAITranscription({

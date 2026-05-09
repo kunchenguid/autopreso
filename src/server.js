@@ -19,6 +19,7 @@ import { createMoonshineTranscription as createDefaultMoonshineTranscription } f
 import { createOpenAITranscription as createDefaultOpenAITranscription } from "./openai-transcription.js";
 import { broadcast, createWhiteboardSession } from "./whiteboard-session.js";
 import { detectMalformedLayoutWarnings, normalizeWhiteboardElements } from "./whiteboard-elements.js";
+import { extractWhiteboardKeywords } from "./whiteboard-keywords.js";
 import { applyWhiteboardEditOperations, formatLineNumberedWhiteboard } from "./whiteboard-tools.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +78,9 @@ export async function startServer(options) {
       return res.status(400).json({ error: "stagingElements (array) is required." });
     }
     const primerMessage = buildStagingPrimerMessage({ stagingElements, stagingScreenshot });
+    const keywords = extractWhiteboardKeywords(stagingElements);
+    console.log(`[autopreso] preso/start: ${keywords.length} staging keyword(s) for transcription bias`);
+    transcription.setSessionContext({ keywords });
     state.startPreso({ primerMessage });
     state.startWarmupLoop({
       runOnce: ({ attempt }) =>
@@ -110,6 +114,7 @@ export async function startServer(options) {
 
   app.post("/api/preso/back-to-staging", (_req, res) => {
     state.backToStaging();
+    transcription.setSessionContext({ keywords: [] });
     broadcast(wss, { type: "mode", mode: state.mode });
     res.json({ ok: true });
   });
@@ -261,6 +266,7 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
     sendAudio: (audio) => current?.sendAudio(audio),
     stop: () => current?.stop(),
     close: () => current?.close(),
+    setSessionContext: (ctx) => current?.setSessionContext?.(ctx),
     getLabel: () => label,
     applyCurrent,
   };
