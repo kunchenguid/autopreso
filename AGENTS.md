@@ -41,7 +41,7 @@ The session has two modes that are NOT symmetric:
 - **`staging`** - client-side scratchpad. The server does not track elements in this mode; the frontend owns them. Used to seed the canvas with reference content before going live.
 - **`live`** - the server owns `state.elements` as the source of truth. Audio, screenshots, and user edits all flow into the server, which applies agent edits and broadcasts updates.
 
-Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty) and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode.
+Transitions: `POST /api/preso/start` builds a "staging primer" message (current scene snapshot + downscaled screenshot when staging is non-empty), extracts staging text/labels as transcription keywords, and kicks off the warmup loop. `POST /api/preso/back-to-staging` returns to client-owned mode and clears the transcription keywords; `POST /api/session/reset` also clears them.
 
 ### Warmup loop
 
@@ -70,7 +70,7 @@ Three providers, all routed through the `@ai-sdk/openai` adapter:
 - **Moonshine (default, local)** - `src/moonshine-transcription.js` spawns the platform-specific binary at `@autopreso/moonshine-<platform>/bin/autopreso-moonshine` (declared as **optional** dependencies; the install just skips on unsupported platforms). The binary is built from `scripts/moonshine-sidecar.py` via PyInstaller; only macOS arm64/x64 are currently packaged.
 - **OpenAI Realtime** - `src/openai-transcription.js` opens a WSS connection to `wss://api.openai.com/v1/realtime?intent=transcription` and streams PCM frames.
 
-The active provider is hot-swappable: `applyCurrent()` in `server.js`'s `createTranscriptionManager` rebuilds the underlying instance whenever settings change, without restarting the server.
+The active provider is hot-swappable: `applyCurrent()` in `server.js`'s `createTranscriptionManager` rebuilds the underlying instance whenever settings change, without restarting the server. Any active session context is reapplied to the new provider.
 
 ### Settings store (`src/settings-store.js`)
 

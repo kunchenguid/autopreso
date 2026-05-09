@@ -87,3 +87,44 @@ test("session reset broadcasts the starter whiteboard to connected websocket cli
     await new Promise((resolve) => httpServer.close(resolve));
   }
 });
+
+test("POST /api/session/reset clears transcription vocabulary context", async () => {
+  const sessionContextCalls = [];
+  const { httpServer, url } = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    moonshineModel: "medium",
+    openaiApiKey: "test",
+    createTranscription: () => ({
+      ready: async () => {},
+      sendAudio: () => {},
+      stop: () => {},
+      setSessionContext: (ctx) => sessionContextCalls.push(ctx),
+      close: () => {},
+    }),
+    generateTextFn: async () => ({ text: "DONE", finishReason: "stop" }),
+    streamTextFn: () => ({ consumeStream: async () => {} }),
+    warmupMaxAttempts: 1,
+    warmupDelays: [],
+  });
+
+  try {
+    const startRes = await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: [{ type: "text", id: "t1", text: "Kafka consumer group" }],
+        stagingScreenshot: "data:image/png;base64,c3RhZ2luZw==",
+      }),
+    });
+    assert.equal(startRes.status, 200);
+    assert.deepEqual(sessionContextCalls.at(-1), { keywords: ["Kafka consumer group"] });
+
+    const resetRes = await fetch(`${url}/api/session/reset`, { method: "POST" });
+    assert.equal(resetRes.status, 200);
+
+    assert.deepEqual(sessionContextCalls.at(-1), { keywords: [] });
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});

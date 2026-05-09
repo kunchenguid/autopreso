@@ -14,13 +14,15 @@ const SAMPLE_SCREENSHOT = "data:image/png;base64,c3RhZ2luZw==";
 function makeTranscriptionMock() {
   const audioCalls = [];
   const stopCalls = [];
+  const sessionContextCalls = [];
   const factory = () => ({
     ready: async () => {},
     sendAudio: (audio) => audioCalls.push(audio),
     stop: () => stopCalls.push(true),
+    setSessionContext: (ctx) => sessionContextCalls.push(ctx),
     close: () => {},
   });
-  return { factory, audioCalls, stopCalls };
+  return { factory, audioCalls, stopCalls, sessionContextCalls };
 }
 
 async function startTestServer(extraOptions = {}) {
@@ -166,6 +168,119 @@ test("POST /api/preso/start broadcasts mode change and fresh whiteboard", async 
     assert.deepEqual(update.elements, []);
   } finally {
     ws.terminate();
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("POST /api/preso/start pushes staging keyword vocabulary to the transcription provider", async () => {
+  const { httpServer, url, transcription } = await startTestServer();
+  try {
+    const res = await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: [
+          { type: "text", id: "t1", text: "Schema registry" },
+          { type: "rectangle", id: "r1", label: { text: "Kafka consumer group" } },
+          { type: "ellipse", id: "e1" },
+        ],
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    assert.equal(transcription.sessionContextCalls.length, 1, "expected one setSessionContext call on preso start");
+    const { keywords } = transcription.sessionContextCalls[0];
+    assert.ok(Array.isArray(keywords));
+    assert.ok(keywords.includes("Schema registry"));
+    assert.ok(keywords.includes("Kafka consumer group"));
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("settings reload reapplies staging keyword vocabulary to the new transcription provider", async () => {
+  const instances = [];
+  const settings = {
+    transcription: {
+      provider: "openai",
+      openai: { model: "gpt-4o-mini-transcribe" },
+      moonshine: { model: "medium" },
+    },
+    apiKeys: { openai: "test" },
+  };
+  const settingsStore = {
+    load: async () => settings,
+    save: async (next) => {
+      Object.assign(settings, next);
+    },
+    getSanitized: async () => settings,
+  };
+  const createTranscription = () => {
+    const instance = {
+      sessionContextCalls: [],
+      ready: async () => {},
+      sendAudio: () => {},
+      stop: () => {},
+      setSessionContext: (ctx) => instance.sessionContextCalls.push(ctx),
+      close: () => {},
+    };
+    instances.push(instance);
+    return instance;
+  };
+  const { httpServer, url } = await startTestServer({ settingsStore, createTranscription });
+  try {
+    const startRes = await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: [{ type: "text", id: "t1", text: "Schema registry" }],
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    assert.equal(startRes.status, 200);
+    assert.equal(instances.length, 1);
+    assert.deepEqual(instances[0].sessionContextCalls.at(-1), { keywords: ["Schema registry"] });
+
+    const settingsRes = await fetch(`${url}/api/settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        transcription: {
+          provider: "openai",
+          openai: { model: "gpt-4o-transcribe" },
+          moonshine: { model: "medium" },
+        },
+        apiKeys: { openai: "test" },
+      }),
+    });
+    assert.equal(settingsRes.status, 200);
+    assert.equal(instances.length, 2);
+    assert.deepEqual(instances[1].sessionContextCalls.at(-1), { keywords: ["Schema registry"] });
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("POST /api/preso/back-to-staging clears any previously pushed transcription vocabulary", async () => {
+  const { httpServer, url, transcription } = await startTestServer();
+  try {
+    await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: [{ type: "text", id: "t1", text: "Kafka consumer group" }],
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    transcription.sessionContextCalls.length = 0;
+
+    const res = await fetch(`${url}/api/preso/back-to-staging`, { method: "POST" });
+    assert.equal(res.status, 200);
+
+    assert.equal(transcription.sessionContextCalls.length, 1, "expected one clearing setSessionContext call");
+    assert.deepEqual(transcription.sessionContextCalls[0], { keywords: [] });
+  } finally {
     await new Promise((resolve) => httpServer.close(resolve));
   }
 });
