@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.3...autopreso-v0.1.4) (2026-05-09)
+
+
+### Features
+
+* add persistent agent instructions ([#13](https://github.com/kunchenguid/autopreso/issues/13)) ([41fbd58](https://github.com/kunchenguid/autopreso/commit/41fbd5871ffbced6496ccb0d600d9d2a09a8ab59))
+* **transcription:** bias OpenAI transcription with staging vocabulary ([#12](https://github.com/kunchenguid/autopreso/issues/12)) ([6ac7a10](https://github.com/kunchenguid/autopreso/commit/6ac7a1034def51e56ee8ef49cf145944739bcd68))
+
 ## [0.1.3](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.2...autopreso-v0.1.3) (2026-05-08)
 
 
