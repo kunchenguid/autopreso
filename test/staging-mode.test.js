@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { WebSocket } from "ws";
 
 import { startServer } from "../src/server.js";
+import { MAX_AGENT_INSTRUCTIONS_CHARS } from "../src/settings-store.js";
 import { STARTER_ELEMENTS } from "../public/starter-elements.js";
 
 const SAMPLE_STAGING_ELEMENTS = [
@@ -770,6 +771,193 @@ test("POST /api/preso/start rejects payload missing required fields", async () =
       body: JSON.stringify({}),
     });
     assert.equal(res.status, 400);
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+function makeSettingsStore(seed = {}) {
+  const settings = {
+    agent: {
+      provider: "openai",
+      openai: { model: "gpt-5.5", reasoningEffort: "low" },
+      codex: { model: "gpt-5.5", baseURL: "https://chatgpt.com/backend-api/codex" },
+      ollama: { model: "", baseURL: "http://localhost:11434/v1" },
+    },
+    transcription: {
+      provider: "moonshine",
+      moonshine: { model: "medium" },
+      openai: { model: "gpt-realtime-whisper" },
+    },
+    apiKeys: { openai: "sk-test" },
+    agentInstructions: "",
+    ...seed,
+  };
+  return {
+    load: async () => settings,
+    save: async (patch) => Object.assign(settings, patch),
+    getSanitized: async () => {
+      const { apiKeys, ...rest } = settings;
+      return { ...rest, hasOpenAIKey: Boolean(apiKeys?.openai) };
+    },
+  };
+}
+
+test("agent instructions snapshot at preso start are folded into system prompt for warmup", async () => {
+  const calls = [];
+  const settingsStore = makeSettingsStore({
+    agentInstructions: "Use a Lewis Carroll quill, never use the colour red.",
+  });
+  const { httpServer, url, state } = await startTestServer({
+    settingsStore,
+    generateTextFn: async (opts) => {
+      calls.push({ system: opts.system, messages: opts.messages });
+      return { text: "UNDERSTOOD", finishReason: "stop" };
+    },
+  });
+  try {
+    await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    await state.warmupPromise;
+    assert.equal(calls.length, 1, "expected one warmup call");
+    assert.match(
+      calls[0].system,
+      /Lewis Carroll quill, never use the colour red/,
+      "warmup system prompt must include the user's agent instructions",
+    );
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("POST /api/preso/start rejects oversized saved agent instructions", async () => {
+  const settingsStore = makeSettingsStore({ agentInstructions: "x".repeat(MAX_AGENT_INSTRUCTIONS_CHARS + 1) });
+  const { httpServer, url } = await startTestServer({ settingsStore });
+  try {
+    const res = await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.match(body.error, /Agent instructions must be 100000 characters or fewer\./);
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("agent instructions are included in real-turn system prompt and stay stable for cache", async () => {
+  const calls = [];
+  const settingsStore = makeSettingsStore({
+    agentInstructions: "Always start with a giant title block.",
+  });
+  const { httpServer, url, state } = await startTestServer({
+    settingsStore,
+    generateTextFn: async (opts) => {
+      calls.push({ system: opts.system, messages: opts.messages });
+      return { text: "DONE", finishReason: "stop" };
+    },
+  });
+  try {
+    await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    await state.warmupPromise;
+
+    state.queueTranscript("hello world from the speaker");
+    await state.idle();
+
+    const realCalls = calls.filter((c) => c.messages.some((m) => m.role === "assistant"));
+    assert.ok(realCalls.length >= 1, "expected at least one real turn");
+    assert.match(
+      realCalls[0].system,
+      /Always start with a giant title block/,
+      "real-turn system prompt must include the user's agent instructions",
+    );
+    // Cache stability: warmup and real-turn must share the same system prefix.
+    const warmupCalls = calls.filter((c) => !c.messages.some((m) => m.role === "assistant"));
+    assert.equal(warmupCalls[0].system, realCalls[0].system, "system prompt must match between warmup and real turn");
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("agent instructions changed mid-preso do NOT affect the running preso (cache stability)", async () => {
+  const calls = [];
+  const settingsStore = makeSettingsStore({ agentInstructions: "ORIGINAL_INSTRUCTIONS" });
+  const { httpServer, url, state } = await startTestServer({
+    settingsStore,
+    generateTextFn: async (opts) => {
+      calls.push({ system: opts.system, messages: opts.messages });
+      return { text: "DONE", finishReason: "stop" };
+    },
+  });
+  try {
+    await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    await state.warmupPromise;
+
+    // User edits instructions while live. Per design, the snapshot taken at
+    // /api/preso/start wins for the duration of the preso so the cached prefix
+    // doesn't get invalidated mid-stream.
+    await settingsStore.save({ agentInstructions: "CHANGED_INSTRUCTIONS" });
+
+    state.queueTranscript("first speaker turn");
+    await state.idle();
+
+    const realCalls = calls.filter((c) => c.messages.some((m) => m.role === "assistant"));
+    assert.ok(realCalls.length >= 1);
+    assert.match(realCalls[0].system, /ORIGINAL_INSTRUCTIONS/);
+    assert.doesNotMatch(realCalls[0].system, /CHANGED_INSTRUCTIONS/);
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("empty agentInstructions adds nothing to the system prompt", async () => {
+  const calls = [];
+  const settingsStore = makeSettingsStore({ agentInstructions: "" });
+  const { httpServer, url, state } = await startTestServer({
+    settingsStore,
+    generateTextFn: async (opts) => {
+      calls.push({ system: opts.system });
+      return { text: "UNDERSTOOD", finishReason: "stop" };
+    },
+  });
+  try {
+    await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: SAMPLE_STAGING_ELEMENTS,
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    await state.warmupPromise;
+    assert.ok(calls.length >= 1);
+    // No "User instructions" header should appear when the field is blank.
+    assert.doesNotMatch(calls[0].system, /User instructions:/i);
   } finally {
     await new Promise((resolve) => httpServer.close(resolve));
   }

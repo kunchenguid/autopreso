@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { createSettingsStore, DEFAULT_SETTINGS } from "../src/settings-store.js";
+import { createSettingsStore, DEFAULT_SETTINGS, MAX_AGENT_INSTRUCTIONS_CHARS } from "../src/settings-store.js";
 
 async function tempPath() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "autopreso-settings-"));
@@ -98,6 +98,16 @@ test("createSettingsStore.save deep-merges and persists to disk", async () => {
   assert.equal(settings.transcription.provider, "openai");
   assert.equal(settings.transcription.openai.model, "gpt-realtime-whisper");
   assert.equal(settings.transcription.moonshine.model, DEFAULT_SETTINGS.transcription.moonshine.model);
+});
+
+test("createSettingsStore.save rejects oversized agent instructions", async () => {
+  const store = createSettingsStore({ filePath: await tempPath(), env: {}, readCodexAuth: noCodexAuth });
+  await store.load();
+
+  await assert.rejects(
+    store.save({ agentInstructions: "x".repeat(MAX_AGENT_INSTRUCTIONS_CHARS + 1) }),
+    /Agent instructions must be 100000 characters or fewer\./,
+  );
 });
 
 test("createSettingsStore.save writes the file with 0600 permissions", async () => {
