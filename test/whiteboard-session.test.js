@@ -27,6 +27,65 @@ test("isTrivialTranscript keeps real content", () => {
   assert.equal(isTrivialTranscript("Done!"), false, "single 4-letter command is real content");
 });
 
+test("session token starts active and bumps to a new active token on endSession()", () => {
+  const session = createWhiteboardSession({
+    options: {},
+    wss: { clients: new Set() },
+    runAgent: async () => {},
+  });
+  const first = session.session;
+  assert.equal(first.active, true);
+  session.endSession();
+  assert.equal(first.active, false, "previous session token must be deactivated");
+  assert.notEqual(session.session, first, "endSession should swap in a new token");
+  assert.equal(session.session.active, true);
+});
+
+test("startPreso, backToStaging, and reset all end the prior session", () => {
+  const session = createWhiteboardSession({
+    options: {},
+    wss: { clients: new Set() },
+    runAgent: async () => {},
+  });
+
+  let prev = session.session;
+  session.startPreso({ primerMessage: { role: "user", content: "primer" } });
+  assert.equal(prev.active, false);
+  assert.notEqual(session.session, prev);
+
+  prev = session.session;
+  session.backToStaging();
+  assert.equal(prev.active, false);
+  assert.notEqual(session.session, prev);
+
+  prev = session.session;
+  session.reset();
+  assert.equal(prev.active, false);
+  assert.notEqual(session.session, prev);
+});
+
+test("runTurn skips runAgent when the session ended while waiting on warmup", async () => {
+  const ranWith = [];
+  let resolveWarmup = (..._args) => {};
+  const session = createWhiteboardSession({
+    options: {},
+    wss: { clients: new Set() },
+    runAgent: async ({ transcript }) => {
+      ranWith.push(transcript);
+    },
+  });
+  session.mode = "live";
+  session.warmupPromise = new Promise((resolve) => { resolveWarmup = resolve; });
+
+  session.queueTranscript("hello world");
+  // While runTurn is still awaiting warmup, end the session.
+  session.endSession();
+  resolveWarmup();
+  await session.idle();
+
+  assert.deepEqual(ranWith, [], "stale runTurn must not invoke runAgent");
+});
+
 test("whiteboard session buffers transcript chunks that arrive while the agent is mid-turn", async () => {
   // The queue runs without its own debounce now (delta-quiet upstream owns
   // turn boundaries), so the first chunk fires immediately. While that turn

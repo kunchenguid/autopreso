@@ -181,6 +181,10 @@ export async function startServer(options) {
       }
 
       if (message.type === "stop") {
+        // End the listening session so any in-flight agent turn or late
+        // transcript chunk discards its state mutations. Cost tracking
+        // continues regardless.
+        state.endSession();
         transcription.stop();
       }
 
@@ -323,6 +327,14 @@ async function createTranscriptionManager({ options, wss, queueTranscript, state
 }
 
 export async function runWhiteboardAgent({ transcript, state, wss, options, generateTextFn = generateText, streamTextFn = streamText }) {
+  // Capture the session at turn start. If the user clicks Stop / Back to
+  // staging / Reset / Start preso while we're in flight, mySession.active
+  // flips to false. Tool execute and the post-turn agentHistory update both
+  // check this and become no-ops, so late LLM responses can't mutate the
+  // canvas or contaminate the next session's history. Cost recording does
+  // NOT consult this - we paid for the tokens regardless.
+  // (Tests/scaffolds without a session token are treated as always-active.)
+  const mySession = state.session ?? { active: true };
   // Only attach the live screenshot when the canvas has been edited since the
   // last attach. On DONE-only turns nothing changed, so the screenshot adds
   // ~7-10k tokens of noise without giving the agent new visual info.
@@ -381,6 +393,7 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
           elements: z.array(whiteboardElementSchema).describe("Complete replacement drawing object array."),
         }),
         execute: async ({ elements }) => {
+          if (!mySession.active) return STALE_SESSION_TOOL_RESULT;
           options.onAgentEvent?.({ type: "tool:start", tool: "whiteboard_overwrite", input: { elements }, timestamp: new Date().toISOString() });
           const normalizedElements = normalizeWhiteboardElements(elements);
           state.elements = normalizedElements;
@@ -403,6 +416,7 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
           }).optional().describe("Optional viewport command applied AFTER any edits. Omit when no viewport change is needed."),
         }),
         execute: async ({ operations, viewport }) => {
+          if (!mySession.active) return STALE_SESSION_TOOL_RESULT;
           const hasOps = Array.isArray(operations) && operations.length > 0;
           const hasViewport = viewport && typeof viewport === "object";
           if (!hasOps && !hasViewport) {
@@ -475,11 +489,20 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
   recordAgentCost(state, wss, agentProvider, result);
   options.onAgentEvent?.({ type: "model:end", transcript, result: summarizeAgentResult(result), timestamp: new Date().toISOString() });
 
-  state.agentHistory = appendWhiteboardAgentHistory(state.agentHistory, {
-    transcript,
-  });
+  if (mySession.active) {
+    state.agentHistory = appendWhiteboardAgentHistory(state.agentHistory, {
+      transcript,
+    });
+  }
   return result;
 }
+
+// Returned to the model when a tool is called after the user has ended the
+// session (clicked Stop, etc). The model sees this as the tool result, which
+// usually causes it to stop without further tool calls. State is unchanged
+// either way - what matters is that we did not mutate state.elements or
+// broadcast a whiteboard:update for the late edit.
+const STALE_SESSION_TOOL_RESULT = "Session has ended; the requested edit was not applied.";
 
 function appendLayoutWarnings(formattedBoard, elements) {
   const warnings = detectMalformedLayoutWarnings(elements);

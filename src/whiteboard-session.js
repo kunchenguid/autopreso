@@ -54,6 +54,13 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     // (saves ~7-10k tokens per turn on DONE-only turns when nothing changed).
     canvasDirtyForAgent: false,
     cost: createSessionCostTracker(),
+    // Session token. In-flight operations capture this object at start and
+    // check `mySession.active` before mutating shared state. endSession()
+    // flips the captured token's active to false and swaps in a new token,
+    // so anything still in flight (LLM response, tool execute, queued turn,
+    // late delta flush) becomes a no-op for state mutation. Cost tracking
+    // does NOT consult this - we record what we paid for regardless.
+    session: { id: 0, active: true },
   };
 
   let warmupCancelled = false;
@@ -79,10 +86,15 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     isReady: (text) => !isTrivialTranscript(text),
     runTurn: async (transcript) => {
       if (state.mode !== "live") return;
+      // Capture the session at the moment the turn begins. If endSession()
+      // fires while we're awaiting warmup or the agent call, mySession.active
+      // flips to false and we bail without mutating anything.
+      const mySession = state.session;
       // Wait for any in-flight prompt-cache warmup so the cache is primed
       // before we send the first real transcript turn through.
       try { await state.warmupPromise; } catch { /* warmup errors are logged elsewhere */ }
       if (state.mode !== "live") return;
+      if (!mySession.active) return;
       state.agentBusy = true;
       publishAgentStatus();
       options.onAgentEvent?.({ type: "turn:start", transcript, timestamp: new Date().toISOString() });
@@ -102,6 +114,10 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
 
   state.queueTranscript = (text) => queue.enqueue(text);
   state.idle = () => queue.idle();
+  state.endSession = () => {
+    state.session.active = false;
+    state.session = { id: state.session.id + 1, active: true };
+  };
   state.updateLatestScreenshot = (image) => {
     state.latestScreenshot = image;
     // A fresh screenshot means the canvas changed (either the agent just
@@ -110,12 +126,14 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     state.canvasDirtyForAgent = true;
   };
   state.reset = () => {
+    state.endSession();
     state.elements = seedElements();
     state.agentHistory = [];
     state.latestScreenshot = undefined;
     state.cost.reset();
   };
   state.startPreso = ({ primerMessage, agentInstructions = "" }) => {
+    state.endSession();
     state.mode = "live";
     state.elements = seedElements();
     state.latestScreenshot = undefined;
@@ -215,6 +233,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
   };
 
   state.backToStaging = () => {
+    state.endSession();
     state.mode = "staging";
     state.cancelWarmup();
   };
