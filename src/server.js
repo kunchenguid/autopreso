@@ -33,7 +33,20 @@ export async function startServer(options) {
   app.use(express.static(PUBLIC_DIR));
 
   const httpServer = createHttpServer(app);
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: "/ws",
+    maxPayload: 10 * 1024 * 1024,
+    verifyClient({ origin }) {
+      if (!origin) return true;
+      try {
+        const host = new URL(origin).hostname;
+        return host === "localhost" || host === "127.0.0.1" || host === "::1";
+      } catch {
+        return false;
+      }
+    },
+  });
   const state = createWhiteboardSession({
     options,
     wss,

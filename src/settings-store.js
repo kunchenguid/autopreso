@@ -60,6 +60,7 @@ export function createSettingsStore({ filePath, env = process.env, readCodexAuth
   async function save(partial) {
     if (!cached) await load();
     validateAgentInstructions(partial?.agentInstructions);
+    validateBaseURLs(partial);
     cached = deepMerge(cached, partial);
     await writeToDisk(cached);
     return cached;
@@ -81,10 +82,13 @@ function cloneDefaults() {
   return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
 }
 
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function deepMerge(target, source) {
   if (!source || typeof source !== "object") return target;
   const result = Array.isArray(target) ? [...target] : { ...target };
   for (const [key, value] of Object.entries(source)) {
+    if (DANGEROUS_KEYS.has(key)) continue;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       result[key] = deepMerge(result[key] ?? {}, value);
     } else if (value !== undefined) {
@@ -143,5 +147,23 @@ function trimOrEmpty(value) {
 export function validateAgentInstructions(value) {
   if (typeof value === "string" && value.length > MAX_AGENT_INSTRUCTIONS_CHARS) {
     throw new Error(`Agent instructions must be ${MAX_AGENT_INSTRUCTIONS_CHARS} characters or fewer.`);
+  }
+}
+
+const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function validateBaseURLs(partial) {
+  const ollamaURL = partial?.agent?.ollama?.baseURL;
+  if (typeof ollamaURL !== "string") return;
+  try {
+    const { hostname } = new URL(ollamaURL);
+    if (!LOCALHOST_HOSTS.has(hostname)) {
+      throw new Error(`Ollama baseURL must point to localhost, got "${hostname}".`);
+    }
+  } catch (error) {
+    if (error.code === "ERR_INVALID_URL") {
+      throw new Error("Ollama baseURL is not a valid URL.");
+    }
+    throw error;
   }
 }
