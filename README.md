@@ -81,7 +81,7 @@ npm start
 - **Two modes** - "staging" lets you sketch seed content client-side; "live" hands the canvas over to the agent, biases OpenAI Realtime transcription toward staging text and labels, and starts streaming transcripts.
 - **Local server, local network only** - the Express + WebSocket server binds to 127.0.0.1; nothing is exposed beyond your machine.
 - **Persistent settings** - models, API keys, STT engine choices, and Agent instructions live in `~/.config/autopreso/settings.json` and survive restarts.
-- **Warmup loop** - after you hit start the agent primes itself against your staging content so the first sentence you say doesn't get a cold model.
+- **Warmup loop** - after you hit start the agent primes itself against your staging content and Agent instructions so the first sentence you say doesn't get a cold model.
 
 ## CLI Reference
 
@@ -100,7 +100,7 @@ npm start
 ## Configuration
 
 Settings persist at `~/.config/autopreso/settings.json` and are managed from the in-app status panel.
-Agent instructions are saved automatically from staging and take effect on the next Start Preso.
+Agent instructions are saved automatically from staging, can be up to 100,000 characters, and take effect on the next Start Preso.
 
 ### Defaults on first run
 
