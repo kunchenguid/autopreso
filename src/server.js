@@ -209,6 +209,8 @@ export async function startServer(options) {
 async function createTranscriptionManager({ options, wss, queueTranscript }) {
   let current = null;
   let label = "";
+  let sessionContext = null;
+  let hasSessionContext = false;
 
   const sendTranscript = (message) => broadcast(wss, message);
 
@@ -256,6 +258,7 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
       options: factoryOptions,
       env: factoryOptions.env,
     });
+    if (hasSessionContext) current.setSessionContext?.(sessionContext);
     await current.ready();
     options.onStatus?.(`${label} transcription model ready.`);
   }
@@ -266,7 +269,11 @@ async function createTranscriptionManager({ options, wss, queueTranscript }) {
     sendAudio: (audio) => current?.sendAudio(audio),
     stop: () => current?.stop(),
     close: () => current?.close(),
-    setSessionContext: (ctx) => current?.setSessionContext?.(ctx),
+    setSessionContext: (ctx) => {
+      sessionContext = ctx;
+      hasSessionContext = true;
+      current?.setSessionContext?.(ctx);
+    },
     getLabel: () => label,
     applyCurrent,
   };

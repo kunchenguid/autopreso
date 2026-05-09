@@ -199,6 +199,69 @@ test("POST /api/preso/start pushes staging keyword vocabulary to the transcripti
   }
 });
 
+test("settings reload reapplies staging keyword vocabulary to the new transcription provider", async () => {
+  const instances = [];
+  const settings = {
+    transcription: {
+      provider: "openai",
+      openai: { model: "gpt-4o-mini-transcribe" },
+      moonshine: { model: "medium" },
+    },
+    apiKeys: { openai: "test" },
+  };
+  const settingsStore = {
+    load: async () => settings,
+    save: async (next) => {
+      Object.assign(settings, next);
+    },
+    getSanitized: async () => settings,
+  };
+  const createTranscription = () => {
+    const instance = {
+      sessionContextCalls: [],
+      ready: async () => {},
+      sendAudio: () => {},
+      stop: () => {},
+      setSessionContext: (ctx) => instance.sessionContextCalls.push(ctx),
+      close: () => {},
+    };
+    instances.push(instance);
+    return instance;
+  };
+  const { httpServer, url } = await startTestServer({ settingsStore, createTranscription });
+  try {
+    const startRes = await fetch(`${url}/api/preso/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stagingElements: [{ type: "text", id: "t1", text: "Schema registry" }],
+        stagingScreenshot: SAMPLE_SCREENSHOT,
+      }),
+    });
+    assert.equal(startRes.status, 200);
+    assert.equal(instances.length, 1);
+    assert.deepEqual(instances[0].sessionContextCalls.at(-1), { keywords: ["Schema registry"] });
+
+    const settingsRes = await fetch(`${url}/api/settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        transcription: {
+          provider: "openai",
+          openai: { model: "gpt-4o-transcribe" },
+          moonshine: { model: "medium" },
+        },
+        apiKeys: { openai: "test" },
+      }),
+    });
+    assert.equal(settingsRes.status, 200);
+    assert.equal(instances.length, 2);
+    assert.deepEqual(instances[1].sessionContextCalls.at(-1), { keywords: ["Schema registry"] });
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
 test("POST /api/preso/back-to-staging clears any previously pushed transcription vocabulary", async () => {
   const { httpServer, url, transcription } = await startTestServer();
   try {
