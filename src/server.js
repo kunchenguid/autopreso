@@ -181,11 +181,8 @@ export async function startServer(options) {
       }
 
       if (message.type === "stop") {
-        // End the listening session so any in-flight agent turn or late
-        // transcript chunk discards its state mutations. Cost tracking
-        // continues regardless.
-        state.endSession();
         transcription.stop();
+        state.endSession();
       }
 
       if (message.type === "whiteboard:screenshot" && typeof message.image === "string") {

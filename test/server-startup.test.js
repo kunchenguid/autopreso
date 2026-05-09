@@ -95,8 +95,8 @@ test("websocket screenshot messages update agent visual context", async () => {
     openaiApiKey: "test",
     createTranscription: ({ queueTranscript }) => ({
       ready: async () => {},
-      sendAudio: () => {},
-      stop: () => queueTranscript("Update the visual layout"),
+      sendAudio: () => queueTranscript("Update the visual layout"),
+      stop: () => {},
       close: () => {},
     }),
     generateTextFn: async ({ messages }) => {
@@ -110,15 +110,79 @@ test("websocket screenshot messages update agent visual context", async () => {
   try {
     state.mode = "live";
     const ws = new WebSocket(url.replace("http:", "ws:") + "/ws");
+    const initialMessages = new Promise((resolve) => {
+      let count = 0;
+      ws.on("message", () => {
+        count += 1;
+        if (count === 6) resolve();
+      });
+    });
     await new Promise((resolve, reject) => {
       ws.once("open", resolve);
       ws.once("error", reject);
     });
+    await initialMessages;
     ws.send(JSON.stringify({ type: "whiteboard:screenshot", image: "data:image/png;base64,latest" }));
-    ws.send(JSON.stringify({ type: "stop" }));
+    ws.send(JSON.stringify({ type: "audio", audio: "" }));
     await generateTextStarted;
     ws.close();
   } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
+test("websocket stop makes synchronous transcript flush stale", async () => {
+  let generateCalled = false;
+  let ws;
+  let resolveStopCalled;
+  const stopCalled = new Promise((resolve) => {
+    resolveStopCalled = resolve;
+  });
+  const { httpServer, url, state } = await startServer({
+    host: "127.0.0.1",
+    port: 0,
+    moonshineModel: "medium",
+    openaiApiKey: "test",
+    createTranscription: ({ queueTranscript }) => ({
+      ready: async () => {},
+      sendAudio: () => {},
+      stop: () => {
+        queueTranscript("Final flushed words");
+        resolveStopCalled();
+      },
+      close: () => {},
+    }),
+    generateTextFn: async () => {
+      generateCalled = true;
+      return { text: "DONE", finishReason: "stop" };
+    },
+  });
+
+  try {
+    state.mode = "live";
+    ws = new WebSocket(url.replace("http:", "ws:") + "/ws");
+    const initialMessages = new Promise((resolve) => {
+      let count = 0;
+      ws.on("message", () => {
+        count += 1;
+        if (count === 5) resolve();
+      });
+    });
+    await new Promise((resolve, reject) => {
+      ws.once("open", resolve);
+      ws.once("error", reject);
+    });
+    await initialMessages;
+    ws.send(JSON.stringify({ type: "stop" }));
+    await Promise.race([
+      stopCalled,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for transcription stop.")), 2000)),
+    ]);
+    await state.idle();
+    assert.equal(generateCalled, false);
+    ws.close();
+  } finally {
+    ws?.close();
     await new Promise((resolve) => httpServer.close(resolve));
   }
 });
