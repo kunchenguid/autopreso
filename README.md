@@ -78,7 +78,7 @@ npm start
                                                   └────────────────┘
 ```
 
-- **Two modes** - "staging" lets you sketch seed content client-side; "live" hands the canvas over to the agent and starts streaming transcripts.
+- **Two modes** - "staging" lets you sketch seed content client-side; "live" hands the canvas over to the agent, biases OpenAI Realtime transcription toward staging text and labels, and starts streaming transcripts.
 - **Local server, local network only** - the Express + WebSocket server binds to 127.0.0.1; nothing is exposed beyond your machine.
 - **Persistent settings** - models, API keys, and STT engine choices live in `~/.config/autopreso/settings.json` and survive restarts.
 - **Warmup loop** - after you hit start the agent primes itself against your staging content so the first sentence you say doesn't get a cold model.
