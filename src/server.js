@@ -68,6 +68,7 @@ export async function startServer(options) {
 
   app.post("/api/session/reset", (_req, res) => {
     state.reset();
+    transcription.setSessionContext({ keywords: [] });
     broadcast(wss, { type: "whiteboard:update", elements: state.elements });
     res.json({ ok: true });
   });
