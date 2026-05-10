@@ -1,6 +1,6 @@
 {
   "name": "autopreso",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Realtime speech to presentation. Let the whiteboard whiteboard itself.",
   "license": "MIT",
   "author": "Kun Chen <kun@kunchenguid.com>",

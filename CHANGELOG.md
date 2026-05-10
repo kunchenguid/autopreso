@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.5...autopreso-v0.1.6) (2026-05-10)
+
+
+### Features
+
+* support configurable OpenAI base URLs ([#19](https://github.com/kunchenguid/autopreso/issues/19)) ([3f465c8](https://github.com/kunchenguid/autopreso/commit/3f465c864c442f091128e2b6a4e77394e34e1c37))
+
 ## [0.1.5](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.4...autopreso-v0.1.5) (2026-05-09)
 
 
