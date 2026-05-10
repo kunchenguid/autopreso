@@ -64,3 +64,13 @@ test("frontend handles viewport commands from the agent", () => {
   assert.match(appSource, /action === "scroll_to_content"/);
   assert.match(appSource, /action === "set_zoom"/);
 });
+
+test("frontend exposes OpenAI agent base URL and labels the key as API key", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /const \[openaiBaseURL, setOpenaiBaseURL\] = React\.useState\([\s\S]*settings\.agent\.openai\.baseURL/);
+  assert.match(appSource, /patch\.agent\.openai\.baseURL = openaiBaseURL/);
+  assert.match(appSource, /provider === "openai"[\s\S]*field\([\s\S]*"Base URL"/);
+  assert.match(appSource, /field\([\s\S]*"API key"[\s\S]*placeholder: "configured \(enter to replace\)"/);
+  assert.doesNotMatch(appSource, /"OpenAI key"/);
+});

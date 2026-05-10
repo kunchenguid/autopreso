@@ -62,7 +62,7 @@ The agent does not see Excalidraw JSON directly; it sees a **line-numbered text 
 
 Three providers, all routed through the `@ai-sdk/openai` adapter:
 
-- **openai** - direct API key.
+- **openai** - direct API key, with configurable OpenAI-compatible API base URL.
 - **codex** - reads the user's Codex CLI auth from `~/.codex/auth.json`, then talks to the ChatGPT backend with that bearer token. No API key needed.
 - **ollama** - OpenAI-compatible local endpoint (`http://localhost:11434/v1`).
 
@@ -77,7 +77,7 @@ The active provider is hot-swappable: `applyCurrent()` in `server.js`'s `createT
 
 ### Settings store (`src/settings-store.js`)
 
-Persists to `~/.config/autopreso/settings.json`, including `agentInstructions` validated at 100,000 characters. The store has a `getSanitized()` method that strips API keys before sending to the frontend - always use that for outbound payloads. Env vars (`OPENAI_API_KEY`, `OPENAI_MODEL`, `OLLAMA_*`, `CODEX_*`) only **seed** the file on first run; once it exists, the file wins and env vars are ignored.
+Persists to `~/.config/autopreso/settings.json`, including `agentInstructions` validated at 100,000 characters. The store has a `getSanitized()` method that strips API keys before sending to the frontend - always use that for outbound payloads. Env vars (`OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`, `OLLAMA_*`, `CODEX_*`) only **seed** the file on first run; once it exists, the file wins and env vars are ignored.
 
 ## Testing conventions
 

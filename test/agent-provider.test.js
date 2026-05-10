@@ -27,3 +27,21 @@ test("createWhiteboardAgentModel creates a Codex responses model", () => {
   assert.equal(model.provider, "openai-codex.responses");
   assert.equal(model.modelId, "gpt-5.5");
 });
+
+test("createWhiteboardAgentModel uses the configured OpenAI base URL", () => {
+  const model = createWhiteboardAgentModel({
+    provider: "openai",
+    model: "gpt-5.5",
+    baseURL: "https://gateway.example.test/v1",
+    apiKey: "sk-test",
+    reasoningEffort: "low",
+  });
+
+  assert.equal(model.provider, "openai.responses");
+  assert.equal(model.modelId, "gpt-5.5");
+  const config = Reflect.get(model, "config");
+  assert.equal(
+    config.url({ path: "/responses" }).toString(),
+    "https://gateway.example.test/v1/responses",
+  );
+});

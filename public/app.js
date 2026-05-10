@@ -11,7 +11,7 @@ import { STARTER_ELEMENTS } from "./starter-elements.js";
 const SAMPLE_RATE = 24000;
 const REASONING_EFFORTS = ["none", "low", "medium", "high", "xhigh"];
 const OPENAI_AGENT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
-const CODEX_AGENT_MODELS = ["gpt-5.5", "gpt-5.5-fast", "gpt-5.4"];
+const CODEX_AGENT_MODELS = ["gpt-5.5-fast", "gpt-5.5", "gpt-5.4"];
 const OPENAI_TRANSCRIPTION_MODELS = [
   "gpt-realtime-whisper",
   "gpt-4o-transcribe",
@@ -1331,6 +1331,9 @@ function AgentEditor({ settings, onSave, onCancel }) {
   const [reasoningEffort, setReasoningEffort] = React.useState(
     settings.agent.openai.reasoningEffort,
   );
+  const [openaiBaseURL, setOpenaiBaseURL] = React.useState(
+    settings.agent.openai.baseURL,
+  );
   const [codexModel, setCodexModel] = React.useState(
     settings.agent.codex.model,
   );
@@ -1354,6 +1357,7 @@ function AgentEditor({ settings, onSave, onCancel }) {
     if (provider === "openai") {
       patch.agent.openai.model = openaiModel;
       patch.agent.openai.reasoningEffort = reasoningEffort;
+      patch.agent.openai.baseURL = openaiBaseURL;
     } else if (provider === "codex") {
       patch.agent.codex.model = codexModel;
     } else {
@@ -1429,7 +1433,7 @@ function AgentEditor({ settings, onSave, onCancel }) {
       : null,
     needsOpenAIKey
       ? field(
-          "OpenAI key",
+          "API key",
           React.createElement("input", {
             type: "password",
             value: openaiKey,
@@ -1441,12 +1445,23 @@ function AgentEditor({ settings, onSave, onCancel }) {
       : null,
     provider === "openai" && settings.hasOpenAIKey
       ? field(
-          "OpenAI key",
+          "API key",
           React.createElement("input", {
             type: "password",
             value: openaiKey,
             onChange: (e) => setOpenaiKey(e.target.value),
             placeholder: "configured (enter to replace)",
+            disabled: busy,
+          }),
+        )
+      : null,
+    provider === "openai"
+      ? field(
+          "Base URL",
+          React.createElement("input", {
+            type: "text",
+            value: openaiBaseURL,
+            onChange: (e) => setOpenaiBaseURL(e.target.value),
             disabled: busy,
           }),
         )
@@ -1543,7 +1558,7 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
       : null,
     needsOpenAIKey
       ? field(
-          "OpenAI key",
+          "API key",
           React.createElement("input", {
             type: "password",
             value: openaiKey,
@@ -1555,7 +1570,7 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
       : null,
     provider === "openai" && settings.hasOpenAIKey
       ? field(
-          "OpenAI key",
+          "API key",
           React.createElement("input", {
             type: "password",
             value: openaiKey,

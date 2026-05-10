@@ -17,6 +17,7 @@ test("createSettingsStore returns defaults when file is missing and env is empty
   const store = createSettingsStore({ filePath: await tempPath(), env: {}, readCodexAuth: noCodexAuth });
   const settings = await store.load();
   assert.deepEqual(settings, DEFAULT_SETTINGS);
+  assert.equal(settings.agent.codex.model, "gpt-5.5-fast");
 });
 
 test("createSettingsStore seeds settings from environment on first run", async () => {
@@ -25,6 +26,7 @@ test("createSettingsStore seeds settings from environment on first run", async (
     env: {
       OPENAI_API_KEY: "sk-env",
       OPENAI_MODEL: "gpt-5-pro",
+      OPENAI_BASE_URL: "https://gateway.example.test/v1",
       OPENAI_REASONING_EFFORT: "high",
       OLLAMA_MODEL: "llama3",
       OLLAMA_BASE_URL: "http://localhost:1234/v1",
@@ -34,6 +36,7 @@ test("createSettingsStore seeds settings from environment on first run", async (
   const settings = await store.load();
   assert.equal(settings.apiKeys.openai, "sk-env");
   assert.equal(settings.agent.openai.model, "gpt-5-pro");
+  assert.equal(settings.agent.openai.baseURL, "https://gateway.example.test/v1");
   assert.equal(settings.agent.openai.reasoningEffort, "high");
   assert.equal(settings.agent.ollama.model, "llama3");
   assert.equal(settings.agent.ollama.baseURL, "http://localhost:1234/v1");
