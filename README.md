@@ -11,6 +11,10 @@
 
 <h3 align="center">Let the whiteboard whiteboard itself.</h3>
 
+<p align="center">
+  <img src="assets/autopreso.png" alt="autopreso whiteboard hero screenshot" width="960" />
+</p>
+
 > [!WARNING]
 > autopreso is in **alpha** and under active development. Expect rough edges, breaking changes, and the occasional weird drawing. Bug reports welcome.
 

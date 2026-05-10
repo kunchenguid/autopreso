@@ -32,6 +32,7 @@
     "autopreso": "src/cli.js"
   },
   "files": [
+    "assets/",
     "LICENSE",
     "public/",
     "src/"
