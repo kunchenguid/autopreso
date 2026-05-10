@@ -116,8 +116,8 @@ When no settings file exists, autopreso picks providers based on what it finds i
 | ------------------------------------------ | ------------------------------ | -------------------------- |
 | Nothing                                    | OpenAI `gpt-5.5` (needs a key) | Moonshine `medium` (macOS) |
 | `OPENAI_API_KEY` in env                    | OpenAI `gpt-5.5`               | OpenAI Realtime            |
-| Codex CLI signed in (`~/.codex/auth.json`) | Codex `gpt-5.5`                | Moonshine `medium`         |
-| Codex CLI signed in + `OPENAI_API_KEY`     | Codex `gpt-5.5`                | OpenAI Realtime            |
+| Codex CLI signed in (`~/.codex/auth.json`) | Codex `gpt-5.5-fast`           | Moonshine `medium`         |
+| Codex CLI signed in + `OPENAI_API_KEY`     | Codex `gpt-5.5-fast`           | OpenAI Realtime            |
 | `OLLAMA_MODEL` set                         | Ollama (your model)            | Moonshine `medium`         |
 
 Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `OPENAI_API_KEY`** for the agent. Transcription flips to OpenAI Realtime any time an OpenAI key is present, otherwise Moonshine. After first run, this auto-detection no longer applies - change providers from the in-app status panel.
@@ -131,6 +131,7 @@ Provider variables only seed `settings.json` on first run. Once the file exists,
 | `PORT`                 | Port to listen on. Default: `3210`.                   |
 | `OPENAI_API_KEY`       | Seeds the OpenAI key for both agent and Realtime STT. |
 | `OPENAI_MODEL`         | Seeds the OpenAI agent model.                         |
+| `OPENAI_BASE_URL`      | Seeds the OpenAI agent API base URL.                  |
 | `CODEX_MODEL`          | Seeds the Codex model.                                |
 | `OLLAMA_MODEL`         | Seeds the Ollama model.                               |
 | `AUTOPRESO_CACHE_LOG`  | Cache usage log path. Default: `~/.config/autopreso/logs/cache.log`. |

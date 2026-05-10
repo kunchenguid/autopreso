@@ -8,8 +8,8 @@ export const MAX_AGENT_INSTRUCTIONS_CHARS = 100_000;
 export const DEFAULT_SETTINGS = Object.freeze({
   agent: {
     provider: "openai",
-    openai: { model: "gpt-5.5", reasoningEffort: "low" },
-    codex: { model: "gpt-5.5", baseURL: "https://chatgpt.com/backend-api/codex" },
+    openai: { model: "gpt-5.5", reasoningEffort: "low", baseURL: "https://api.openai.com/v1" },
+    codex: { model: "gpt-5.5-fast", baseURL: "https://chatgpt.com/backend-api/codex" },
     ollama: { model: "", baseURL: "http://localhost:11434/v1" },
   },
   transcription: {
@@ -101,6 +101,9 @@ function seedFromEnv(settings, env, readCodexAuth) {
 
   const openaiModel = trimOrEmpty(env.OPENAI_MODEL);
   if (openaiModel) next.agent.openai.model = openaiModel;
+
+  const openaiBaseURL = trimOrEmpty(env.OPENAI_BASE_URL);
+  if (openaiBaseURL) next.agent.openai.baseURL = openaiBaseURL;
 
   const reasoningEffort = trimOrEmpty(env.OPENAI_REASONING_EFFORT);
   if (reasoningEffort) next.agent.openai.reasoningEffort = reasoningEffort;

@@ -10,8 +10,8 @@ function settingsBase() {
   return {
     agent: {
       provider: "openai",
-      openai: { model: "gpt-5.5", reasoningEffort: "low" },
-      codex: { model: "gpt-5.5", baseURL: "https://chatgpt.com/backend-api/codex" },
+      openai: { model: "gpt-5.5", reasoningEffort: "low", baseURL: "https://api.openai.com/v1" },
+      codex: { model: "gpt-5.5-fast", baseURL: "https://chatgpt.com/backend-api/codex" },
       ollama: { model: "", baseURL: "http://localhost:11434/v1" },
     },
     apiKeys: { openai: "" },
@@ -23,13 +23,33 @@ test("resolveAgentProviderFromSettings returns OpenAI provider from settings + k
   settings.apiKeys.openai = "sk-from-settings";
   settings.agent.openai.model = "gpt-5-pro";
   settings.agent.openai.reasoningEffort = "high";
+  settings.agent.openai.baseURL = "https://gateway.example.test/v1/";
 
   assert.deepEqual(resolveAgentProviderFromSettings({ settings, env: {} }), {
     provider: "openai",
     model: "gpt-5-pro",
     apiKey: "sk-from-settings",
     reasoningEffort: "high",
+    baseURL: "https://gateway.example.test/v1",
   });
+});
+
+test("resolveAgentProviderFromSettings trims OpenAI base URL before defaulting", () => {
+  const settings = settingsBase();
+  settings.apiKeys.openai = "sk-from-settings";
+  settings.agent.openai.baseURL = "  https://gateway.example.test/v1/  ";
+
+  assert.equal(
+    resolveAgentProviderFromSettings({ settings, env: {} }).baseURL,
+    "https://gateway.example.test/v1",
+  );
+
+  settings.agent.openai.baseURL = "   ";
+
+  assert.equal(
+    resolveAgentProviderFromSettings({ settings, env: {} }).baseURL,
+    "https://api.openai.com/v1",
+  );
 });
 
 test("resolveAgentProviderFromSettings falls back to env OPENAI_API_KEY when settings has none", () => {
@@ -81,6 +101,25 @@ test("resolveAgentProviderFromSettings returns Codex provider using filesystem a
   const settings = settingsBase();
   settings.agent.provider = "codex";
   settings.agent.codex.model = "gpt-5.5-fast";
+
+  assert.deepEqual(resolveAgentProviderFromSettings({ settings, env: { CODEX_HOME: codexHome } }), {
+    provider: "codex",
+    model: "gpt-5.5",
+    requestedModel: "gpt-5.5-fast",
+    baseURL: "https://chatgpt.com/backend-api/codex",
+    apiKey: "codex-token",
+    reasoningEffort: "low",
+    serviceTier: "priority",
+  });
+});
+
+test("resolveAgentProviderFromSettings defaults Codex provider to fast mode", () => {
+  const codexHome = mkdtempSync(join(tmpdir(), "autopreso-codex-default-"));
+  writeFileSync(join(codexHome, "auth.json"), JSON.stringify({ tokens: { access_token: "codex-token", refresh_token: "refresh" } }));
+
+  const settings = settingsBase();
+  settings.agent.provider = "codex";
+  settings.agent.codex.model = "";
 
   assert.deepEqual(resolveAgentProviderFromSettings({ settings, env: { CODEX_HOME: codexHome } }), {
     provider: "codex",

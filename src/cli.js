@@ -76,6 +76,7 @@ Environment:
   PORT                     Port to listen on. Default: 3210
   OPENAI_API_KEY           Seeds the OpenAI key on first run if no settings file exists
   OPENAI_MODEL             Seeds the OpenAI agent model on first run
+  OPENAI_BASE_URL          Seeds the OpenAI agent API base URL on first run
   OPENAI_REASONING_EFFORT  Seeds reasoning effort on first run (none, low, medium, high, xhigh)
   CODEX_HOME               Codex CLI home directory. Default: ~/.codex
   CODEX_MODEL              Seeds the Codex model on first run

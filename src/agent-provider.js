@@ -3,7 +3,9 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { DEFAULT_CODEX_BASE_URL, createCodexFetch, readCodexCliAuthSync } from "./codex-auth.js";
 
 const DEFAULT_OPENAI_AGENT_MODEL = "gpt-5.5";
+const DEFAULT_CODEX_AGENT_MODEL = "gpt-5.5-fast";
 const DEFAULT_OPENAI_REASONING_EFFORT = "low";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
 const OPENAI_REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh"]);
 
@@ -12,6 +14,7 @@ export function defaultWhiteboardAgentProvider(options = {}) {
     provider: "openai",
     model: DEFAULT_OPENAI_AGENT_MODEL,
     apiKey: options.openaiApiKey,
+    baseURL: DEFAULT_OPENAI_BASE_URL,
     reasoningEffort: DEFAULT_OPENAI_REASONING_EFFORT,
   };
 }
@@ -33,7 +36,7 @@ export function resolveAgentProviderFromSettings({ settings, env = process.env }
   if (provider === "codex") {
     const codexAuth = readCodexCliAuthSync(env);
     if (!codexAuth) throw new Error("Codex CLI auth not found. Run `codex` and sign in with ChatGPT.");
-    const codexModel = resolveCodexModel(settings.agent.codex.model || DEFAULT_OPENAI_AGENT_MODEL);
+    const codexModel = resolveCodexModel(settings.agent.codex.model || DEFAULT_CODEX_AGENT_MODEL);
     return {
       provider: "codex",
       ...codexModel,
@@ -50,6 +53,7 @@ export function resolveAgentProviderFromSettings({ settings, env = process.env }
     model: settings.agent.openai.model || DEFAULT_OPENAI_AGENT_MODEL,
     apiKey,
     reasoningEffort: validateReasoningEffort(settings.agent.openai.reasoningEffort),
+    baseURL: withoutTrailingSlash(cleanEnvValue(settings.agent.openai.baseURL) ?? DEFAULT_OPENAI_BASE_URL),
   };
 }
 
@@ -81,7 +85,10 @@ export function createWhiteboardAgentModel(agentProvider) {
     return codex.responses(agentProvider.model);
   }
 
-  const openai = createOpenAI({ apiKey: agentProvider.apiKey });
+  const openai = createOpenAI({
+    apiKey: agentProvider.apiKey,
+    baseURL: agentProvider.baseURL,
+  });
   return openai(agentProvider.model);
 }
 
