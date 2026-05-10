@@ -12,7 +12,7 @@
 <h3 align="center">Let the whiteboard whiteboard itself.</h3>
 
 <p align="center">
-  <img src="assets/autopreso.png" alt="autopreso whiteboard hero screenshot" width="960" />
+  <img src="https://raw.githubusercontent.com/kunchenguid/autopreso/main/assets/autopreso.png" alt="autopreso whiteboard hero screenshot" width="960" />
 </p>
 
 > [!WARNING]
