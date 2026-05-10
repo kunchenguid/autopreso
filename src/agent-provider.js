@@ -53,7 +53,7 @@ export function resolveAgentProviderFromSettings({ settings, env = process.env }
     model: settings.agent.openai.model || DEFAULT_OPENAI_AGENT_MODEL,
     apiKey,
     reasoningEffort: validateReasoningEffort(settings.agent.openai.reasoningEffort),
-    baseURL: withoutTrailingSlash(settings.agent.openai.baseURL || DEFAULT_OPENAI_BASE_URL),
+    baseURL: withoutTrailingSlash(cleanEnvValue(settings.agent.openai.baseURL) ?? DEFAULT_OPENAI_BASE_URL),
   };
 }
 

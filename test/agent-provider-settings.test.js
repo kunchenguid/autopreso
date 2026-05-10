@@ -34,6 +34,24 @@ test("resolveAgentProviderFromSettings returns OpenAI provider from settings + k
   });
 });
 
+test("resolveAgentProviderFromSettings trims OpenAI base URL before defaulting", () => {
+  const settings = settingsBase();
+  settings.apiKeys.openai = "sk-from-settings";
+  settings.agent.openai.baseURL = "  https://gateway.example.test/v1/  ";
+
+  assert.equal(
+    resolveAgentProviderFromSettings({ settings, env: {} }).baseURL,
+    "https://gateway.example.test/v1",
+  );
+
+  settings.agent.openai.baseURL = "   ";
+
+  assert.equal(
+    resolveAgentProviderFromSettings({ settings, env: {} }).baseURL,
+    "https://api.openai.com/v1",
+  );
+});
+
 test("resolveAgentProviderFromSettings falls back to env OPENAI_API_KEY when settings has none", () => {
   const settings = settingsBase();
 
