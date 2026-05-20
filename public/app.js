@@ -20,6 +20,7 @@ const OPENAI_TRANSCRIPTION_MODELS = [
 ];
 const MOONSHINE_MODELS = ["tiny", "small", "medium"];
 const MIC_STORAGE_KEY = "autopreso.mic";
+const PANEL_HIDDEN_STORAGE_KEY = "autopreso.panelHidden";
 
 const STARTER_STAGING_ELEMENTS = [];
 
@@ -57,6 +58,14 @@ function saveStoredMic(mic) {
   localStorage.setItem(MIC_STORAGE_KEY, JSON.stringify(mic));
 }
 
+function loadStoredPanelHidden() {
+  try {
+    return localStorage.getItem(PANEL_HIDDEN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function App() {
   const [api, setApi] = React.useState(null);
   const [mode, setMode] = React.useState("staging");
@@ -74,6 +83,7 @@ function App() {
   const [sttError, setSttError] = React.useState(false);
   const [expandedRow, setExpandedRow] = React.useState(null);
   const [mic, setMic] = React.useState(loadStoredMic);
+  const [panelHidden, setPanelHidden] = React.useState(loadStoredPanelHidden);
   const [analyser, setAnalyser] = React.useState(null);
   const [resetConfirming, setResetConfirming] = React.useState(false);
   const [resetting, setResetting] = React.useState(false);
@@ -107,6 +117,12 @@ function App() {
   React.useEffect(() => {
     listeningRef.current = listening;
   }, [listening]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_HIDDEN_STORAGE_KEY, panelHidden ? "1" : "0");
+    } catch {}
+  }, [panelHidden]);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
 
   React.useEffect(() => {
@@ -649,10 +665,31 @@ function App() {
 
   return React.createElement(
     "main",
-    { className: `shell mode-${mode}`, ref: shellRef },
+    {
+      className: `shell mode-${mode}${panelHidden ? " panel-hidden" : ""}`,
+      ref: shellRef,
+    },
     React.createElement(
       "section",
       { className: "canvas-wrap", ref: canvasWrapRef },
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          className: "panel-toggle",
+          onClick: () => setPanelHidden((v) => !v),
+          title: panelHidden ? "Show settings panel" : "Hide settings panel",
+          "aria-label": panelHidden
+            ? "Show settings panel"
+            : "Hide settings panel",
+          "aria-expanded": !panelHidden,
+        },
+        React.createElement(
+          "span",
+          { className: "panel-toggle-icon", "aria-hidden": "true" },
+          panelHidden ? "‹" : "›",
+        ),
+      ),
       React.createElement(Excalidraw, {
         excalidrawAPI: setApi,
         initialData: {
