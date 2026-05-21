@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.6...autopreso-v0.1.7) (2026-05-21)
+
+
+### Features
+
+* toggle the settings panel to free up canvas space ([#21](https://github.com/kunchenguid/autopreso/issues/21)) ([fbe5dd6](https://github.com/kunchenguid/autopreso/commit/fbe5dd6029644210f65671ebf305cd4231ab5f96))
+
 ## [0.1.6](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.5...autopreso-v0.1.6) (2026-05-10)
 
 
