@@ -22,6 +22,12 @@ body {
   grid-template-columns: minmax(0, 1fr) 360px;
   height: 100vh;
   width: 100vw;
+  overflow: hidden;
+  transition: grid-template-columns 240ms ease;
+}
+
+.shell.panel-hidden {
+  grid-template-columns: minmax(0, 1fr) 0;
 }
 
 .canvas-wrap {
@@ -29,6 +35,38 @@ body {
   height: 100vh;
   position: relative;
   overflow: hidden;
+}
+
+.panel-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 50;
+  width: 18px;
+  height: 56px;
+  padding: 0;
+  border-radius: 8px 0 0 8px;
+  background: rgba(255, 253, 248, 0.92);
+  color: #6d675e;
+  border: 1px solid #dedbd2;
+  border-right: none;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: -2px 2px 8px rgba(30, 30, 30, 0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.panel-toggle:hover {
+  background: #fffdf8;
+  color: #1e1e1e;
+}
+
+.panel-toggle-icon {
+  display: inline-block;
 }
 
 .stage-overlay {
@@ -96,6 +134,15 @@ body {
   padding: 22px;
   overflow: auto;
   position: relative;
+  min-width: 0;
+  min-height: 0;
+  transition: opacity 200ms ease;
+}
+
+.shell.panel-hidden .panel {
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .brand h1 {
@@ -646,13 +693,40 @@ button:disabled {
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
+  .shell.panel-hidden {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) 0;
+  }
+
   .canvas-wrap {
     height: 62vh;
+  }
+
+  .shell.panel-hidden .canvas-wrap {
+    height: 100vh;
   }
 
   .panel {
     height: 38vh;
     border-left: 0;
     border-top: 1px solid #dedbd2;
+  }
+
+  .panel-toggle {
+    top: auto;
+    right: auto;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 56px;
+    height: 18px;
+    border-radius: 8px 8px 0 0;
+    border: 1px solid #dedbd2;
+    border-bottom: none;
+    box-shadow: 0 -2px 8px rgba(30, 30, 30, 0.06);
+  }
+
+  .panel-toggle .panel-toggle-icon {
+    transform: rotate(90deg);
   }
 }
