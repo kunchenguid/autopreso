@@ -263,6 +263,40 @@ test("settings reload reapplies staging keyword vocabulary to the new transcript
   }
 });
 
+test("settings reload applies transcript latency without a server restart", async () => {
+  const settingsStore = makeSettingsStore({
+    latency: {
+      transcriptTurnDebounceMs: 250,
+      transcriptTurnMaxWaitMs: 1200,
+    },
+  });
+  const { httpServer, url, state } = await startTestServer({ settingsStore });
+  try {
+    assert.deepEqual(state.transcriptTurnTiming, {
+      transcriptTurnDebounceMs: 250,
+      transcriptTurnMaxWaitMs: 1200,
+    });
+
+    const res = await fetch(`${url}/api/settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        latency: {
+          transcriptTurnDebounceMs: 0,
+          transcriptTurnMaxWaitMs: 500,
+        },
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(state.transcriptTurnTiming, {
+      transcriptTurnDebounceMs: 0,
+      transcriptTurnMaxWaitMs: 500,
+    });
+  } finally {
+    await new Promise((resolve) => httpServer.close(resolve));
+  }
+});
+
 test("POST /api/preso/back-to-staging clears any previously pushed transcription vocabulary", async () => {
   const { httpServer, url, transcription } = await startTestServer();
   try {

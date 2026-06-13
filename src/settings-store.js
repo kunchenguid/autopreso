@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { readCodexCliAuthSync } from "./codex-auth.js";
+import {
+  DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS,
+  DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS,
+} from "./transcript-latency.js";
+import { DEFAULT_XAI_SMART_TURN_TIMEOUT_MS } from "./xai-transcription.js";
 
 export const MAX_AGENT_INSTRUCTIONS_CHARS = 100_000;
 
@@ -9,6 +14,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   agent: {
     provider: "openai",
     openai: { model: "gpt-5.5", reasoningEffort: "low", baseURL: "https://api.openai.com/v1" },
+    xai: { model: "grok-4.3", baseURL: "https://api.x.ai/v1" },
     codex: { model: "gpt-5.5-fast", baseURL: "https://chatgpt.com/backend-api/codex" },
     ollama: { model: "", baseURL: "http://localhost:11434/v1" },
   },
@@ -16,9 +22,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
     provider: "moonshine",
     moonshine: { model: "medium" },
     openai: { model: "gpt-realtime-whisper" },
+    xai: { language: "en", smartTurnTimeoutMs: DEFAULT_XAI_SMART_TURN_TIMEOUT_MS },
+  },
+  latency: {
+    transcriptTurnDebounceMs: DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS,
+    transcriptTurnMaxWaitMs: DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS,
   },
   apiKeys: {
     openai: "",
+    xai: "",
   },
   agentInstructions: "",
 });
@@ -71,6 +83,7 @@ export function createSettingsStore({ filePath, env = process.env, readCodexAuth
     return {
       ...rest,
       hasOpenAIKey: Boolean(apiKeys?.openai),
+      hasXAIKey: Boolean(apiKeys?.xai),
     };
   }
 
@@ -99,11 +112,32 @@ function seedFromEnv(settings, env, readCodexAuth) {
   const openaiKey = trimOrEmpty(env.OPENAI_API_KEY);
   if (openaiKey) next.apiKeys.openai = openaiKey;
 
+  const xaiKey = trimOrEmpty(env.XAI_API_KEY);
+  if (xaiKey) next.apiKeys.xai = xaiKey;
+
   const openaiModel = trimOrEmpty(env.OPENAI_MODEL);
   if (openaiModel) next.agent.openai.model = openaiModel;
 
   const openaiBaseURL = trimOrEmpty(env.OPENAI_BASE_URL);
   if (openaiBaseURL) next.agent.openai.baseURL = openaiBaseURL;
+
+  const xaiModel = trimOrEmpty(env.XAI_MODEL);
+  if (xaiModel) next.agent.xai.model = xaiModel;
+
+  const xaiBaseURL = trimOrEmpty(env.XAI_BASE_URL);
+  if (xaiBaseURL) next.agent.xai.baseURL = xaiBaseURL;
+
+  const xaiSttLanguage = trimOrEmpty(env.XAI_STT_LANGUAGE);
+  if (xaiSttLanguage) next.transcription.xai.language = xaiSttLanguage;
+
+  const xaiSttSmartTurnTimeoutMs = parsePositiveInteger(env.XAI_STT_SMART_TURN_TIMEOUT_MS);
+  if (xaiSttSmartTurnTimeoutMs) next.transcription.xai.smartTurnTimeoutMs = xaiSttSmartTurnTimeoutMs;
+
+  const transcriptTurnDebounceMs = parseNonNegativeInteger(env.AUTOPRESO_TRANSCRIPT_TURN_DEBOUNCE_MS);
+  if (transcriptTurnDebounceMs !== null) next.latency.transcriptTurnDebounceMs = transcriptTurnDebounceMs;
+
+  const transcriptTurnMaxWaitMs = parsePositiveInteger(env.AUTOPRESO_TRANSCRIPT_TURN_MAX_WAIT_MS);
+  if (transcriptTurnMaxWaitMs) next.latency.transcriptTurnMaxWaitMs = transcriptTurnMaxWaitMs;
 
   const reasoningEffort = trimOrEmpty(env.OPENAI_REASONING_EFFORT);
   if (reasoningEffort) next.agent.openai.reasoningEffort = reasoningEffort;
@@ -123,9 +157,11 @@ function seedFromEnv(settings, env, readCodexAuth) {
   const codexAuth = safeReadCodexAuth(readCodexAuth, env);
   if (codexAuth) next.agent.provider = "codex";
   else if (ollamaModel) next.agent.provider = "ollama";
+  else if (xaiKey) next.agent.provider = "xai";
   else next.agent.provider = "openai";
 
   if (openaiKey) next.transcription.provider = "openai";
+  else if (xaiKey) next.transcription.provider = "xai";
 
   return next;
 }
@@ -141,6 +177,18 @@ function safeReadCodexAuth(readCodexAuth, env) {
 function trimOrEmpty(value) {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+function parsePositiveInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.round(numeric);
+}
+
+function parseNonNegativeInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.round(numeric);
 }
 
 export function validateAgentInstructions(value) {

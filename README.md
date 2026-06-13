@@ -25,7 +25,7 @@ You speak; transcripts stream to a model; the model draws, labels, and rearrange
 Stage a few seed elements, hit start, and present.
 
 - **Hands free** - your speech drives an agent that edits an Excalidraw scene as you talk, no clicking required.
-- **Bring your own model** - use your OpenAI API key or Codex subscription. Auto Preso itself is completely free and open source.
+- **Bring your own model** - use your OpenAI or xAI API key, or your Codex subscription. Auto Preso itself is completely free and open source.
 - **Can run locally** - use Moonshine for transcription and Ollama for the agent and you get a fully local setup.
 
 ## Quick Start
@@ -70,9 +70,9 @@ npm start
   ┌──────────┐   audio    ┌──────────────┐   text   ┌──────────────┐
   │   mic    │──────────► │     STT      │────────► │  whiteboard  │
   │ (browser)│   24kHz    │ Moonshine /  │ chunks   │    agent     │
-  └──────────┘            │ OpenAI WS    │          │ (OpenAI /    │
-                          └──────────────┘          │  Codex /     │
-                                                    │  Ollama)     │
+  └──────────┘            │ OpenAI WS /  │          │ (OpenAI /    │
+                          │ xAI STT      │          │  xAI / Codex │
+                          └──────────────┘          │  / Ollama)   │
                                                     └──────┬───────┘
                                                            │ tool calls
                                                            ▼
@@ -82,7 +82,7 @@ npm start
                                                   └────────────────┘
 ```
 
-- **Two modes** - "staging" lets you sketch seed content client-side; "live" hands the canvas over to the agent, biases OpenAI Realtime transcription toward staging text and labels, and starts streaming transcripts.
+- **Two modes** - "staging" lets you sketch seed content client-side; "live" hands the canvas over to the agent, biases OpenAI Realtime or xAI Streaming transcription toward staging text and labels, and starts streaming transcripts.
 - **Local server, local network only** - the Express + WebSocket server binds to 127.0.0.1; nothing is exposed beyond your machine.
 - **Persistent settings** - models, API keys, STT engine choices, and Agent instructions live in `~/.config/autopreso/settings.json` and survive restarts.
 - **Warmup loop** - after you hit start the agent primes itself against your staging content and Agent instructions so the first sentence you say doesn't get a cold model.
@@ -105,8 +105,9 @@ npm start
 
 Settings persist at `~/.config/autopreso/settings.json` and are managed from the in-app status panel.
 Agent instructions are saved automatically from staging, can be up to 100,000 characters, and take effect on the next Start Preso.
-The live Session cost card estimates agent token costs and OpenAI Realtime audio costs for the current presentation, resetting on Start Preso or session reset.
-OpenAI prices use the built-in May 2026 rate table; local providers show `$0.0000`, Codex shows token volume because it routes through your subscription, and unknown models show `n/a`.
+The Latency row in the status panel controls xAI STT end-of-turn timeout plus transcript-to-agent debounce and max-wait timing.
+The live Session cost card estimates agent token costs and cloud transcription audio costs for the current presentation, resetting on Start Preso or session reset.
+OpenAI and xAI prices use the built-in June 2026 rate table; local providers show `$0.0000`, Codex shows token volume because it routes through your subscription, and unknown models show `n/a`.
 
 ### Defaults on first run
 
@@ -116,11 +117,12 @@ When no settings file exists, autopreso picks providers based on what it finds i
 | ------------------------------------------ | ------------------------------ | -------------------------- |
 | Nothing                                    | OpenAI `gpt-5.5` (needs a key) | Moonshine `medium` (macOS) |
 | `OPENAI_API_KEY` in env                    | OpenAI `gpt-5.5`               | OpenAI Realtime            |
+| `XAI_API_KEY` in env                       | xAI `grok-4.3`                 | xAI Streaming STT          |
 | Codex CLI signed in (`~/.codex/auth.json`) | Codex `gpt-5.5-fast`           | Moonshine `medium`         |
 | Codex CLI signed in + `OPENAI_API_KEY`     | Codex `gpt-5.5-fast`           | OpenAI Realtime            |
 | `OLLAMA_MODEL` set                         | Ollama (your model)            | Moonshine `medium`         |
 
-Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `OPENAI_API_KEY`** for the agent. Transcription flips to OpenAI Realtime any time an OpenAI key is present, otherwise Moonshine. After first run, this auto-detection no longer applies - change providers from the in-app status panel.
+Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `XAI_API_KEY` wins over `OPENAI_API_KEY`** for the agent. Transcription flips to OpenAI Realtime any time an OpenAI key is present, otherwise xAI Streaming STT when an xAI key is present, otherwise Moonshine. After first run, this auto-detection no longer applies - change providers from the in-app status panel.
 
 ### Environment variables
 
@@ -132,6 +134,13 @@ Provider variables only seed `settings.json` on first run. Once the file exists,
 | `OPENAI_API_KEY`       | Seeds the OpenAI key for both agent and Realtime STT. |
 | `OPENAI_MODEL`         | Seeds the OpenAI agent model.                         |
 | `OPENAI_BASE_URL`      | Seeds the OpenAI agent API base URL.                  |
+| `XAI_API_KEY`          | Seeds the xAI key for both agent and Streaming STT.   |
+| `XAI_MODEL`            | Seeds the xAI agent model.                            |
+| `XAI_BASE_URL`         | Seeds the xAI agent API base URL.                     |
+| `XAI_STT_LANGUAGE`     | Seeds the xAI STT language code. Default: `en`.       |
+| `XAI_STT_SMART_TURN_TIMEOUT_MS` | Seeds xAI STT end-of-turn timeout. Default: `1200`. |
+| `AUTOPRESO_TRANSCRIPT_TURN_DEBOUNCE_MS` | Seeds transcript-to-agent debounce. Default: `250`. |
+| `AUTOPRESO_TRANSCRIPT_TURN_MAX_WAIT_MS` | Seeds transcript-to-agent max wait. Default: `1200`. |
 | `CODEX_MODEL`          | Seeds the Codex model.                                |
 | `OLLAMA_MODEL`         | Seeds the Ollama model.                               |
 | `AUTOPRESO_CACHE_LOG`  | Cache usage log path. Default: `~/.config/autopreso/logs/cache.log`. |
@@ -143,6 +152,7 @@ Local Moonshine transcription ships as an optional native sidecar for `darwin-ar
 
 - [Excalidraw](https://github.com/excalidraw/excalidraw) - the whiteboard canvas, scene model, and rendering.
 - [Moonshine](https://github.com/moonshine-ai/moonshine) the local speech-to-text model that makes the offline path possible.
+- [xAI](https://docs.x.ai/) - Grok text models and streaming speech-to-text.
 - [Vercel AI SDK](https://github.com/vercel/ai) - tool-calling agent loop and provider abstraction.
 
 ## Development

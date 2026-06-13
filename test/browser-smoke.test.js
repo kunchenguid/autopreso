@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -11,7 +12,6 @@ import { WebSocket } from "ws";
 import { startServer } from "../src/server.js";
 
 const CHROME_BIN = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const CHROME_DEBUG_PORT = 9333;
 
 test("browser renders the app shell", async (t) => {
   if (!existsSync(CHROME_BIN)) {
@@ -37,13 +37,14 @@ test("browser renders the app shell", async (t) => {
   });
 
   const userDataDir = await mkdtemp(path.join(tmpdir(), "autopreso-chrome-"));
+  const chromeDebugPort = await getFreePort();
   const chrome = spawn(
     CHROME_BIN,
     [
       "--headless=new",
       "--disable-gpu",
       "--no-sandbox",
-      `--remote-debugging-port=${CHROME_DEBUG_PORT}`,
+      `--remote-debugging-port=${chromeDebugPort}`,
       `--user-data-dir=${userDataDir}`,
       url,
     ],
@@ -58,8 +59,8 @@ test("browser renders the app shell", async (t) => {
     await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  const tab = await waitForChromeTab(url);
-  const text = await waitForRenderedText(tab.webSocketDebuggerUrl, "Start Preso");
+  const tab = await waitForChromeTab(url, chromeDebugPort);
+  const text = await waitForRenderedText(tab.webSocketDebuggerUrl, url, "Start Preso");
 
   assert.match(text, /Start Preso/);
 
@@ -69,11 +70,26 @@ test("browser renders the app shell", async (t) => {
   assert.ok(controls.some((label) => label.includes("Reset Staging")), `expected a Reset Staging button, got ${JSON.stringify(controls)}`);
 });
 
-async function waitForChromeTab(url) {
+async function getFreePort() {
+  const server = createNetServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve(undefined));
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.close(() => resolve(undefined));
+  });
+  return port;
+}
+
+async function waitForChromeTab(url, debugPort) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     try {
-      const tabs = await fetch(`http://127.0.0.1:${CHROME_DEBUG_PORT}/json`).then((res) => res.json());
+      const tabs = await fetch(`http://127.0.0.1:${debugPort}/json`).then((res) => res.json());
       const tab = tabs.find((item) => item.url === url || item.url === `${url}/`);
       if (tab) return tab;
     } catch {
@@ -84,7 +100,7 @@ async function waitForChromeTab(url) {
   throw new Error("Timed out waiting for Chrome debug tab.");
 }
 
-function waitForRenderedText(webSocketDebuggerUrl, expectedText) {
+function waitForRenderedText(webSocketDebuggerUrl, url, expectedText) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(webSocketDebuggerUrl);
     let id = 0;
@@ -93,7 +109,7 @@ function waitForRenderedText(webSocketDebuggerUrl, expectedText) {
     const timeout = setTimeout(() => {
       ws.close();
       reject(new Error(`Timed out waiting for ${expectedText}.`));
-    }, 20000);
+    }, 35000);
 
     const request = (method, params = {}) => {
       const requestId = ++id;
@@ -105,8 +121,10 @@ function waitForRenderedText(webSocketDebuggerUrl, expectedText) {
 
     ws.on("open", async () => {
       try {
+        await request("Page.enable");
         await request("Runtime.enable");
-        const deadline = Date.now() + 15000;
+        await request("Page.navigate", { url });
+        const deadline = Date.now() + 30000;
         let lastText = "";
 
         while (Date.now() < deadline) {

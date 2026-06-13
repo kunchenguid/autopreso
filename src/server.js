@@ -17,9 +17,10 @@ import {
 } from "./agent-provider.js";
 import { createMoonshineTranscription as createDefaultMoonshineTranscription } from "./moonshine-transcription.js";
 import { createOpenAITranscription as createDefaultOpenAITranscription } from "./openai-transcription.js";
+import { createXAITranscription as createDefaultXAITranscription } from "./xai-transcription.js";
 import { audioSecondsFromBase64Pcm16 } from "./session-cost.js";
 import { validateAgentInstructions } from "./settings-store.js";
-import { broadcast, createWhiteboardSession } from "./whiteboard-session.js";
+import { broadcast, createWhiteboardSession, isTrivialTranscript } from "./whiteboard-session.js";
 import { detectMalformedLayoutWarnings, normalizeWhiteboardElements } from "./whiteboard-elements.js";
 import { extractWhiteboardKeywords } from "./whiteboard-keywords.js";
 import { applyWhiteboardEditOperations, formatLineNumberedWhiteboard } from "./whiteboard-tools.js";
@@ -27,6 +28,7 @@ import { applyWhiteboardEditOperations, formatLineNumberedWhiteboard } from "./w
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 export const DEFAULT_AGENT_TIMEOUT_MS = 90_000;
+export const DEFAULT_STOP_DRAIN_MS = 3_500;
 
 export async function startServer(options) {
   const app = express();
@@ -55,6 +57,17 @@ export async function startServer(options) {
     queueTranscript: (transcript) => state.queueTranscript(transcript),
     state,
   });
+
+  async function finishStoppedSession(sessionToEnd) {
+    const drainMs = Number.isFinite(options.stopDrainMs) ? Math.max(0, options.stopDrainMs) : DEFAULT_STOP_DRAIN_MS;
+    if (drainMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, drainMs));
+    }
+    await state.idle();
+    if (state.session === sessionToEnd && sessionToEnd.active) {
+      state.endSession();
+    }
+  }
 
   app.get("/api/config", async (_req, res) => {
     const sanitized = options.settingsStore ? await options.settingsStore.getSanitized() : null;
@@ -191,9 +204,12 @@ export async function startServer(options) {
         const hasSessionId = typeof message.sessionId === "string";
         const matchesActiveSession = hasSessionId ? message.sessionId === activeAudioSessionId : activeAudioSessionId === null;
         if (matchesActiveSession) {
+          const sessionToEnd = state.session;
           transcription.stop();
           activeAudioSessionId = null;
-          state.endSession();
+          finishStoppedSession(sessionToEnd).catch((error) => {
+            console.error("Failed to finish stopped session:", error);
+          });
         }
       }
 
@@ -256,7 +272,13 @@ async function createTranscriptionManager({ options, wss, queueTranscript, state
       ...options,
       moonshineModel: settings.transcription.moonshine.model,
       openaiTranscriptionModel: settings.transcription.openai.model,
-      env: { ...(options.env ?? process.env), OPENAI_API_KEY: settings.apiKeys?.openai || (options.env ?? process.env).OPENAI_API_KEY },
+      xaiSttLanguage: settings.transcription.xai?.language ?? "en",
+      xaiSttSmartTurnTimeoutMs: settings.transcription.xai?.smartTurnTimeoutMs ?? options.xaiSttSmartTurnTimeoutMs,
+      env: {
+        ...(options.env ?? process.env),
+        OPENAI_API_KEY: settings.apiKeys?.openai || (options.env ?? process.env).OPENAI_API_KEY,
+        XAI_API_KEY: settings.apiKeys?.xai || (options.env ?? process.env).XAI_API_KEY,
+      },
     };
   }
 
@@ -264,25 +286,40 @@ async function createTranscriptionManager({ options, wss, queueTranscript, state
     if (options.createTranscription) return options.createTranscription;
     const provider = settings ? settings.transcription.provider : options.transcriptionProvider;
     if (provider === "openai") return createDefaultOpenAITranscription;
+    if (provider === "xai") return createDefaultXAITranscription;
     return createDefaultMoonshineTranscription;
   }
 
   function describeLabel(settings) {
     if (settings) {
       if (settings.transcription.provider === "openai") return `OpenAI ${settings.transcription.openai.model}`;
+      if (settings.transcription.provider === "xai") return `xAI STT ${settings.transcription.xai?.language ?? "en"}`;
       return `Moonshine ${settings.transcription.moonshine.model}`;
     }
     if (options.transcriptionProvider === "openai") return `OpenAI ${options.openaiTranscriptionModel}`;
+    if (options.transcriptionProvider === "xai") return `xAI STT ${options.xaiSttLanguage}`;
     return `Moonshine ${options.moonshineModel}`;
+  }
+
+  function applyTranscriptLatency(settings) {
+    state?.setTranscriptTurnTiming?.(
+      settings?.latency ?? {
+        transcriptTurnDebounceMs: options.transcriptTurnDebounceMs,
+        transcriptTurnMaxWaitMs: options.transcriptTurnMaxWaitMs,
+      },
+    );
   }
 
   async function applyCurrent() {
     const settings = options.settingsStore ? await options.settingsStore.load() : null;
+    applyTranscriptLatency(settings);
     const newLabel = describeLabel(settings);
     activeProvider = settings ? settings.transcription.provider : (options.transcriptionProvider ?? "moonshine");
     activeModel = activeProvider === "openai"
       ? (settings?.transcription.openai.model ?? options.openaiTranscriptionModel ?? null)
-      : (settings?.transcription.moonshine.model ?? options.moonshineModel ?? null);
+      : activeProvider === "xai"
+        ? "streaming"
+        : (settings?.transcription.moonshine.model ?? options.moonshineModel ?? null);
 
     if (current && newLabel === label) return;
 
@@ -386,12 +423,25 @@ export async function runWhiteboardAgent({ transcript, state, wss, options, gene
   const primerText = extractPrimerText(state.agentHistory?.[0]);
   const effectiveSystem = buildEffectiveSystemPrompt(baseSystem, primerText, state.agentInstructions);
   const messages = primerText ? reshapeMessagesForCodex(rawMessages) : rawMessages;
+  const shouldForceInitialVisual =
+    agentProvider.provider === "xai" &&
+    Array.isArray(state.elements) &&
+    state.elements.length === 0 &&
+    !isTrivialTranscript(transcript);
   options.onAgentEvent?.({ type: "model:start", transcript, system: effectiveSystem, messages, timestamp: new Date().toISOString() });
   const codexInstructions = agentProvider.provider === "codex" ? effectiveSystem : null;
   dumpAgentRequest("turn", { system: effectiveSystem, messages, instructions: codexInstructions, primerText });
   const agentCallOptions = {
     model: createWhiteboardAgentModel(agentProvider),
     providerOptions: createWhiteboardAgentProviderOptions(agentProvider, effectiveSystem),
+    ...(shouldForceInitialVisual
+      ? {
+          prepareStep: ({ stepNumber }) =>
+            stepNumber === 0
+              ? { toolChoice: { type: "tool", toolName: "whiteboard_apply" } }
+              : undefined,
+        }
+      : {}),
     stopWhen: stepCountIs(4),
     system: effectiveSystem,
     messages,
@@ -826,6 +876,13 @@ export function logAgentUsage(label, result, extras = {}) {
 }
 
 function createWhiteboardAgentProviderOptions(agentProvider, effectiveSystem) {
+  if (agentProvider.provider === "xai") {
+    return {
+      xai: {
+        parallelToolCalls: false,
+      },
+    };
+  }
   if (!["openai", "codex"].includes(agentProvider.provider)) return undefined;
   return {
     openai: {
@@ -945,7 +1002,11 @@ This message arrives before any spoken content. Respond with the single word UND
 }
 
 function formatCurrentCanvasTask(elements, latestScreenshot) {
-  const text = `Current line-numbered whiteboard content:\n${formatLineNumberedWhiteboard(elements)}\n\nTask:\nUse the latest speaker turn and prior context to decide whether the canvas should change.\n\nBEFORE choosing a layout, check the "Reference context for this presentation" section in your system instructions: it contains the staging area the user prepared, including any diagrams. If the speaker has just reached a topic that the staging diagrams already cover, REUSE that staging structure on the live canvas - same shapes, same labels, same arrangement, same colors - rather than inventing a different layout. The staging is the user's pre-approved visualization for those topics; only invent something new when staging doesn't cover the topic at all.\n\nIf updating, use whiteboard_apply for targeted changes (operations + viewport in ONE call). Use whiteboard_overwrite only when you need to clear, reset, or start fresh. Keep the canvas organized around the core concepts, not the transcript sequence. In the same whiteboard_apply call, also include viewport with action "scroll_to_content" AND focus_ids naming the elements the speaker is currently talking about, so the viewport centers exactly on the active talking point - never call scroll_to_content without focus_ids. Make ONE whiteboard_apply call per turn whenever possible; do not split edits and viewport into back-to-back calls. The attached screenshot (when present) shows the audience's current viewport - use it to verify your edits actually look good and that the right region is visible.`;
+  const formattedBoard = formatLineNumberedWhiteboard(elements);
+  const initialVisualRule = formattedBoard === "(empty whiteboard)"
+    ? "\n\nThe whiteboard is empty. If the latest speaker turn contains any substantive topic, claim, relationship, contrast, or direct drawing request, you MUST create the first visual structure now with whiteboard_apply operations. Do not answer DONE on an empty whiteboard unless the turn is only filler, silence, or a self-correction with no durable content."
+    : "";
+  const text = `Current line-numbered whiteboard content:\n${formattedBoard}\n\nTask:\nUse the latest speaker turn and prior context to decide whether the canvas should change.${initialVisualRule}\n\nBEFORE choosing a layout, check the "Reference context for this presentation" section in your system instructions: it contains the staging area the user prepared, including any diagrams. If the speaker has just reached a topic that the staging diagrams already cover, REUSE that staging structure on the live canvas - same shapes, same labels, same arrangement, same colors - rather than inventing a different layout. The staging is the user's pre-approved visualization for those topics; only invent something new when staging doesn't cover the topic at all.\n\nIf updating, use whiteboard_apply for targeted changes (operations + viewport in ONE call). Use whiteboard_overwrite only when you need to clear, reset, or start fresh. Keep the canvas organized around the core concepts, not the transcript sequence. In the same whiteboard_apply call, also include viewport with action "scroll_to_content" AND focus_ids naming the elements the speaker is currently talking about, so the viewport centers exactly on the active talking point - never call scroll_to_content without focus_ids. Make ONE whiteboard_apply call per turn whenever possible; do not split edits and viewport into back-to-back calls. The attached screenshot (when present) shows the audience's current viewport - use it to verify your edits actually look good and that the right region is visible.`;
   if (typeof latestScreenshot === "string" && latestScreenshot) {
     return [
       { type: "text", text },

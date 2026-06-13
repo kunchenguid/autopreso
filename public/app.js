@@ -11,6 +11,7 @@ import { STARTER_ELEMENTS } from "./starter-elements.js";
 const SAMPLE_RATE = 24000;
 const REASONING_EFFORTS = ["none", "low", "medium", "high", "xhigh"];
 const OPENAI_AGENT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
+const XAI_AGENT_MODELS = ["grok-4.3", "grok-build-0.1"];
 const CODEX_AGENT_MODELS = ["gpt-5.5-fast", "gpt-5.5", "gpt-5.4"];
 const OPENAI_TRANSCRIPTION_MODELS = [
   "gpt-realtime-whisper",
@@ -18,6 +19,14 @@ const OPENAI_TRANSCRIPTION_MODELS = [
   "gpt-4o-mini-transcribe",
   "whisper-1",
 ];
+const XAI_STT_LANGUAGES = [
+  "ar", "cs", "da", "de", "en", "es", "fa", "fil", "fr", "hi", "id", "it",
+  "ja", "ko", "mk", "ms", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr",
+  "vi",
+];
+const DEFAULT_XAI_STT_SMART_TURN_TIMEOUT_MS = 1200;
+const DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS = 250;
+const DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS = 1200;
 const MOONSHINE_MODELS = ["tiny", "small", "medium"];
 const MIC_STORAGE_KEY = "autopreso.mic";
 const PANEL_HIDDEN_STORAGE_KEY = "autopreso.panelHidden";
@@ -100,6 +109,8 @@ function App() {
   const wsRef = React.useRef(null);
   const modeRef = React.useRef("staging");
   const stagingSceneRef = React.useRef(null);
+  const pendingSceneRef = React.useRef(null);
+  const pendingViewportRef = React.useRef(null);
   const screenshotTimerRef = React.useRef(null);
   const captionTimerRef = React.useRef(null);
   const resetConfirmTimerRef = React.useRef(null);
@@ -141,6 +152,17 @@ function App() {
 
   React.useEffect(() => {
     apiRef.current = api;
+    if (!api) return;
+    if (pendingSceneRef.current) {
+      const pending = pendingSceneRef.current;
+      pendingSceneRef.current = null;
+      applyScene(pending.elements, { recenter: pending.recenter });
+    }
+    if (pendingViewportRef.current) {
+      const pending = pendingViewportRef.current;
+      pendingViewportRef.current = null;
+      applyWhiteboardViewportCommand(pending);
+    }
   }, [api]);
 
   React.useEffect(() => {
@@ -191,11 +213,13 @@ function App() {
     // back via onChange, which break the agent's cache prefix and confuse
     // line-numbered references. Sync only during the pre-listen window.
     if (listeningRef.current) return;
+    if (pendingSceneRef.current) return;
     clearTimeout(userElementsSyncTimerRef.current);
     userElementsSyncTimerRef.current = setTimeout(() => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const cleaned = nativeElementsToSkeletonForSync(elements ?? []);
+      if (cleaned.length === 0) return;
       const hash = JSON.stringify(cleaned);
       if (hash === lastSyncedElementsHashRef.current) return;
       lastSyncedElementsHashRef.current = hash;
@@ -525,7 +549,12 @@ function App() {
 
   function applyScene(elements, { recenter = false } = {}) {
     const excalidrawAPI = apiRef.current;
-    if (!excalidrawAPI || !Array.isArray(elements)) return;
+    if (!Array.isArray(elements)) return;
+    clearTimeout(userElementsSyncTimerRef.current);
+    if (!excalidrawAPI) {
+      pendingSceneRef.current = { elements, recenter };
+      return;
+    }
     const looksNative =
       elements.length > 0 &&
       elements[0] &&
@@ -539,6 +568,9 @@ function App() {
     const renderable = looksNative
       ? elements
       : convertToExcalidrawElements(elements, { regenerateIds: false });
+    lastSyncedElementsHashRef.current = JSON.stringify(
+      nativeElementsToSkeletonForSync(renderable),
+    );
     excalidrawAPI.updateScene({
       elements: renderable,
       appState: { viewBackgroundColor: "#fffdf8" },
@@ -554,7 +586,10 @@ function App() {
 
   function applyWhiteboardViewportCommand(command) {
     const excalidrawAPI = apiRef.current;
-    if (!excalidrawAPI) return;
+    if (!excalidrawAPI) {
+      pendingViewportRef.current = command;
+      return;
+    }
 
     const action = command.action;
     if (action === "scroll_to_content") {
@@ -918,6 +953,24 @@ function App() {
             : null,
         }),
         statusRow({
+          dotState: "idle",
+          label: "Latency",
+          value: settings ? latencyLabel(settings) : "loading",
+          expanded: expandedRow === "latency",
+          onToggle: () =>
+            setExpandedRow(expandedRow === "latency" ? null : "latency"),
+          editor: settings
+            ? React.createElement(LatencyEditor, {
+                settings,
+                onSave: async (patch) => {
+                  await saveSettings(patch);
+                  setExpandedRow(null);
+                },
+                onCancel: () => setExpandedRow(null),
+              })
+            : null,
+        }),
+        statusRow({
           dotState: agentState,
           label: "Agent",
           value: agentLabel,
@@ -1245,13 +1298,31 @@ function agentModelLabel(settings) {
   const provider = settings.agent.provider;
   if (provider === "ollama") return settings.agent.ollama.model || "(unset)";
   if (provider === "codex") return settings.agent.codex.model;
+  if (provider === "xai") return settings.agent.xai.model;
   return settings.agent.openai.model;
 }
 
 function sttModelLabel(settings) {
   if (settings.transcription.provider === "moonshine")
     return settings.transcription.moonshine.model;
+  if (settings.transcription.provider === "xai")
+    return `xAI ${settings.transcription.xai.language}`;
   return settings.transcription.openai.model;
+}
+
+function latencyLabel(settings) {
+  const latency = settings.latency ?? {};
+  const debounce =
+    latency.transcriptTurnDebounceMs ?? DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS;
+  const maxWait =
+    latency.transcriptTurnMaxWaitMs ?? DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS;
+  const sttTimeout =
+    settings.transcription.xai?.smartTurnTimeoutMs ??
+    DEFAULT_XAI_STT_SMART_TURN_TIMEOUT_MS;
+  if (settings.transcription.provider !== "xai") {
+    return `queue ${debounce}/${maxWait} ms`;
+  }
+  return `STT ${sttTimeout} · queue ${debounce}/${maxWait} ms`;
 }
 
 function MicEditor({ currentDeviceId, onSave, onCancel }) {
@@ -1371,6 +1442,10 @@ function AgentEditor({ settings, onSave, onCancel }) {
   const [openaiBaseURL, setOpenaiBaseURL] = React.useState(
     settings.agent.openai.baseURL,
   );
+  const [xaiModel, setXaiModel] = React.useState(settings.agent.xai.model);
+  const [xaiBaseURL, setXaiBaseURL] = React.useState(
+    settings.agent.xai.baseURL,
+  );
   const [codexModel, setCodexModel] = React.useState(
     settings.agent.codex.model,
   );
@@ -1381,20 +1456,25 @@ function AgentEditor({ settings, onSave, onCancel }) {
     settings.agent.ollama.baseURL,
   );
   const [openaiKey, setOpenaiKey] = React.useState("");
+  const [xaiKey, setXaiKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [errorText, setErrorText] = React.useState("");
 
   const needsOpenAIKey =
     provider === "openai" && !settings.hasOpenAIKey && !openaiKey;
+  const needsXAIKey = provider === "xai" && !settings.hasXAIKey && !xaiKey;
 
   async function submit() {
     setBusy(true);
     setErrorText("");
-    const patch = { agent: { provider, openai: {}, codex: {}, ollama: {} } };
+    const patch = { agent: { provider, openai: {}, xai: {}, codex: {}, ollama: {} } };
     if (provider === "openai") {
       patch.agent.openai.model = openaiModel;
       patch.agent.openai.reasoningEffort = reasoningEffort;
       patch.agent.openai.baseURL = openaiBaseURL;
+    } else if (provider === "xai") {
+      patch.agent.xai.model = xaiModel;
+      patch.agent.xai.baseURL = xaiBaseURL;
     } else if (provider === "codex") {
       patch.agent.codex.model = codexModel;
     } else {
@@ -1402,6 +1482,7 @@ function AgentEditor({ settings, onSave, onCancel }) {
       patch.agent.ollama.baseURL = ollamaBaseURL;
     }
     if (openaiKey) patch.apiKeys = { openai: openaiKey };
+    if (xaiKey) patch.apiKeys = { ...(patch.apiKeys ?? {}), xai: xaiKey };
     try {
       await onSave(patch);
     } catch (error) {
@@ -1423,6 +1504,7 @@ function AgentEditor({ settings, onSave, onCancel }) {
           disabled: busy,
         },
         React.createElement("option", { value: "openai" }, "OpenAI"),
+        React.createElement("option", { value: "xai" }, "xAI"),
         React.createElement("option", { value: "codex" }, "Codex"),
         React.createElement("option", { value: "ollama" }, "Ollama"),
       ),
@@ -1438,6 +1520,9 @@ function AgentEditor({ settings, onSave, onCancel }) {
           "Reasoning",
           select(reasoningEffort, setReasoningEffort, REASONING_EFFORTS, busy),
         )
+      : null,
+    provider === "xai"
+      ? field("Model", select(xaiModel, setXaiModel, XAI_AGENT_MODELS, busy))
       : null,
     provider === "codex"
       ? field(
@@ -1480,6 +1565,18 @@ function AgentEditor({ settings, onSave, onCancel }) {
           }),
         )
       : null,
+    needsXAIKey
+      ? field(
+          "API key",
+          React.createElement("input", {
+            type: "password",
+            value: xaiKey,
+            onChange: (e) => setXaiKey(e.target.value),
+            placeholder: "xai-...",
+            disabled: busy,
+          }),
+        )
+      : null,
     provider === "openai" && settings.hasOpenAIKey
       ? field(
           "API key",
@@ -1492,6 +1589,18 @@ function AgentEditor({ settings, onSave, onCancel }) {
           }),
         )
       : null,
+    provider === "xai" && settings.hasXAIKey
+      ? field(
+          "API key",
+          React.createElement("input", {
+            type: "password",
+            value: xaiKey,
+            onChange: (e) => setXaiKey(e.target.value),
+            placeholder: "configured (enter to replace)",
+            disabled: busy,
+          }),
+        )
+      : null,
     provider === "openai"
       ? field(
           "Base URL",
@@ -1499,6 +1608,17 @@ function AgentEditor({ settings, onSave, onCancel }) {
             type: "text",
             value: openaiBaseURL,
             onChange: (e) => setOpenaiBaseURL(e.target.value),
+            disabled: busy,
+          }),
+        )
+      : null,
+    provider === "xai"
+      ? field(
+          "Base URL",
+          React.createElement("input", {
+            type: "text",
+            value: xaiBaseURL,
+            onChange: (e) => setXaiBaseURL(e.target.value),
             disabled: busy,
           }),
         )
@@ -1516,7 +1636,136 @@ function AgentEditor({ settings, onSave, onCancel }) {
       ),
       React.createElement(
         "button",
-        { onClick: submit, disabled: busy || needsOpenAIKey },
+        { onClick: submit, disabled: busy || needsOpenAIKey || needsXAIKey },
+        busy ? "Saving..." : "Save",
+      ),
+    ),
+  );
+}
+
+function LatencyEditor({ settings, onSave, onCancel }) {
+  const latency = settings.latency ?? {};
+  const [xaiSmartTurnTimeoutMs, setXaiSmartTurnTimeoutMs] = React.useState(
+    String(
+      settings.transcription.xai?.smartTurnTimeoutMs ??
+        DEFAULT_XAI_STT_SMART_TURN_TIMEOUT_MS,
+    ),
+  );
+  const [transcriptTurnDebounceMs, setTranscriptTurnDebounceMs] =
+    React.useState(
+      String(
+        latency.transcriptTurnDebounceMs ??
+          DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS,
+      ),
+    );
+  const [transcriptTurnMaxWaitMs, setTranscriptTurnMaxWaitMs] =
+    React.useState(
+      String(
+        latency.transcriptTurnMaxWaitMs ??
+          DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS,
+      ),
+    );
+  const [busy, setBusy] = React.useState(false);
+  const [errorText, setErrorText] = React.useState("");
+  const isXaiStt = settings.transcription.provider === "xai";
+
+  async function submit() {
+    setBusy(true);
+    setErrorText("");
+    const patch = {
+      latency: {
+        transcriptTurnDebounceMs: clampNumber(
+          transcriptTurnDebounceMs,
+          0,
+          5000,
+          DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS,
+        ),
+        transcriptTurnMaxWaitMs: clampNumber(
+          transcriptTurnMaxWaitMs,
+          100,
+          10000,
+          DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS,
+        ),
+      },
+    };
+    if (isXaiStt) {
+      patch.transcription = {
+        xai: {
+          smartTurnTimeoutMs: clampNumber(
+            xaiSmartTurnTimeoutMs,
+            300,
+            5000,
+            DEFAULT_XAI_STT_SMART_TURN_TIMEOUT_MS,
+          ),
+        },
+      };
+    }
+    try {
+      await onSave(patch);
+    } catch (error) {
+      setErrorText(error.message);
+      setBusy(false);
+    }
+  }
+
+  return React.createElement(
+    "div",
+    { className: "editor-grid" },
+    isXaiStt
+      ? field(
+          "STT timeout (ms)",
+          React.createElement("input", {
+            type: "number",
+            min: 300,
+            max: 5000,
+            step: 100,
+            inputMode: "numeric",
+            value: xaiSmartTurnTimeoutMs,
+            onChange: (e) => setXaiSmartTurnTimeoutMs(e.target.value),
+            disabled: busy,
+          }),
+        )
+      : null,
+    field(
+      "Debounce (ms)",
+      React.createElement("input", {
+        type: "number",
+        min: 0,
+        max: 5000,
+        step: 50,
+        inputMode: "numeric",
+        value: transcriptTurnDebounceMs,
+        onChange: (e) => setTranscriptTurnDebounceMs(e.target.value),
+        disabled: busy,
+      }),
+    ),
+    field(
+      "Max wait (ms)",
+      React.createElement("input", {
+        type: "number",
+        min: 100,
+        max: 10000,
+        step: 100,
+        inputMode: "numeric",
+        value: transcriptTurnMaxWaitMs,
+        onChange: (e) => setTranscriptTurnMaxWaitMs(e.target.value),
+        disabled: busy,
+      }),
+    ),
+    errorText
+      ? React.createElement("div", { className: "editor-error" }, errorText)
+      : null,
+    React.createElement(
+      "div",
+      { className: "editor-actions" },
+      React.createElement(
+        "button",
+        { className: "secondary", onClick: onCancel, disabled: busy },
+        "Cancel",
+      ),
+      React.createElement(
+        "button",
+        { onClick: submit, disabled: busy },
         busy ? "Saving..." : "Save",
       ),
     ),
@@ -1533,21 +1782,30 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
   const [openaiModel, setOpenaiModel] = React.useState(
     settings.transcription.openai.model,
   );
+  const [xaiLanguage, setXaiLanguage] = React.useState(
+    settings.transcription.xai.language,
+  );
   const [openaiKey, setOpenaiKey] = React.useState("");
+  const [xaiKey, setXaiKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [errorText, setErrorText] = React.useState("");
 
   const needsOpenAIKey =
     provider === "openai" && !settings.hasOpenAIKey && !openaiKey;
+  const needsXAIKey = provider === "xai" && !settings.hasXAIKey && !xaiKey;
 
   async function submit() {
     setBusy(true);
     setErrorText("");
-    const patch = { transcription: { provider, moonshine: {}, openai: {} } };
+    const patch = { transcription: { provider, moonshine: {}, openai: {}, xai: {} } };
     if (provider === "moonshine")
       patch.transcription.moonshine.model = moonshineModel;
     if (provider === "openai") patch.transcription.openai.model = openaiModel;
+    if (provider === "xai") {
+      patch.transcription.xai.language = xaiLanguage;
+    }
     if (openaiKey) patch.apiKeys = { openai: openaiKey };
+    if (xaiKey) patch.apiKeys = { ...(patch.apiKeys ?? {}), xai: xaiKey };
     try {
       await onSave(patch);
     } catch (error) {
@@ -1574,6 +1832,7 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
           "Moonshine (local)",
         ),
         React.createElement("option", { value: "openai" }, "OpenAI Realtime"),
+        React.createElement("option", { value: "xai" }, "xAI Streaming"),
       ),
     ),
     provider === "moonshine"
@@ -1593,6 +1852,9 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
           ),
         )
       : null,
+    provider === "xai"
+      ? field("Language", select(xaiLanguage, setXaiLanguage, XAI_STT_LANGUAGES, busy))
+      : null,
     needsOpenAIKey
       ? field(
           "API key",
@@ -1605,6 +1867,18 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
           }),
         )
       : null,
+    needsXAIKey
+      ? field(
+          "API key",
+          React.createElement("input", {
+            type: "password",
+            value: xaiKey,
+            onChange: (e) => setXaiKey(e.target.value),
+            placeholder: "xai-...",
+            disabled: busy,
+          }),
+        )
+      : null,
     provider === "openai" && settings.hasOpenAIKey
       ? field(
           "API key",
@@ -1612,6 +1886,18 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
             type: "password",
             value: openaiKey,
             onChange: (e) => setOpenaiKey(e.target.value),
+            placeholder: "configured (enter to replace)",
+            disabled: busy,
+          }),
+        )
+      : null,
+    provider === "xai" && settings.hasXAIKey
+      ? field(
+          "API key",
+          React.createElement("input", {
+            type: "password",
+            value: xaiKey,
+            onChange: (e) => setXaiKey(e.target.value),
             placeholder: "configured (enter to replace)",
             disabled: busy,
           }),
@@ -1630,7 +1916,7 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
       ),
       React.createElement(
         "button",
-        { onClick: submit, disabled: busy || needsOpenAIKey },
+        { onClick: submit, disabled: busy || needsOpenAIKey || needsXAIKey },
         busy ? "Saving..." : "Save",
       ),
     ),
@@ -1644,6 +1930,12 @@ function field(label, control) {
     React.createElement("span", { className: "field-label" }, label),
     control,
   );
+}
+
+function clampNumber(value, min, max, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numeric)));
 }
 
 function select(value, onChange, options, disabled) {
