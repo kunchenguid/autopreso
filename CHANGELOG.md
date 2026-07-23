@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.7...autopreso-v0.1.8) (2026-07-23)
+
+
+### Bug Fixes
+
+* execute every PR body compliance event ([#25](https://github.com/kunchenguid/autopreso/issues/25)) ([117e017](https://github.com/kunchenguid/autopreso/commit/117e0175a611c82f4b033cb1139f0fb9ca21a722))
+
 ## [0.1.7](https://github.com/kunchenguid/autopreso/compare/autopreso-v0.1.6...autopreso-v0.1.7) (2026-05-21)
 
 
