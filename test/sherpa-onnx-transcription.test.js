@@ -128,6 +128,56 @@ test("createSherpaOnnxTranscription keeps the warmed process alive when recordin
   assert.equal(stdinWrites.includes("<kill>"), false);
 });
 
+test("createSherpaOnnxTranscription reports crashes and restarts on the next audio frame", async () => {
+  const children = [];
+  const messages = [];
+  const transcription = createSherpaOnnxTranscription({
+    sendTranscript: (message) => messages.push(message),
+    queueTranscript: () => {},
+    options: { env: {}, sherpaOnnxModel: "zipformer-bilingual-zh-en" },
+    ensureModel: async () => "/tmp/sherpa-model",
+    resolveLibraryDir: () => "/tmp/sherpa-runtime",
+    resolveSidecarPath: () => "/tmp/sherpa-onnx-sidecar.cjs",
+    spawnProcess: () => {
+      const child = /** @type {any} */ (new EventEmitter());
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdinWrites = [];
+      child.stdin = {
+        write: (value) => child.stdinWrites.push(value),
+        end: () => {},
+      };
+      child.kill = () => {};
+      children.push(child);
+      return child;
+    },
+  });
+
+  const ready = transcription.ready();
+  await new Promise((resolve) => setImmediate(resolve));
+  children[0].stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+  await ready;
+
+  children[0].emit("close", 17);
+  assert.deepEqual(messages, [{
+    type: "error",
+    message: "Sherpa-ONNX sidecar exited unexpectedly (code 17).",
+  }]);
+
+  transcription.sendAudio("after-crash");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(children.length, 2);
+  children[1].stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(JSON.parse(children[1].stdinWrites[0]), {
+    type: "audio",
+    encoding: "pcm16le",
+    sampleRate: 24000,
+    audio: "after-crash",
+  });
+});
+
 test("createSherpaOnnxTranscription reports model preparation failures", async () => {
   const messages = [];
   const transcription = createSherpaOnnxTranscription({

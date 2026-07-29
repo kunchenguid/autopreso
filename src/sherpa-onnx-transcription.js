@@ -53,9 +53,9 @@ export function createSherpaOnnxTranscription({
 }) {
   const processEnv = env ?? options.env ?? process.env;
   let child = null;
-  let stdoutBuffer = "";
   let readyPromise = null;
   let readySettled = false;
+  let closeRequested = false;
 
   async function prepare() {
     if (readyPromise) return readyPromise;
@@ -66,26 +66,34 @@ export function createSherpaOnnxTranscription({
           modelDir: defaultSherpaOnnxModelDir({ env: processEnv }),
           onStatus: options.onStatus,
         });
+        if (closeRequested) return;
+
         const libraryDir = resolveLibraryDir();
         const childEnv = withNativeLibraryPath(processEnv, libraryDir);
         const sidecarPath = resolveSidecarPath();
 
         await new Promise((resolve, reject) => {
-          child = spawnProcess(
+          const spawnedChild = spawnProcess(
             process.execPath,
             [sidecarPath, "--model-dir", modelDir],
             { stdio: ["pipe", "pipe", "pipe"], env: childEnv },
           );
+          let processReady = false;
+          let runtimeFailureReported = false;
+          let processStdoutBuffer = "";
+          child = spawnedChild;
 
-          child.stdout.on("data", (chunk) => {
-            stdoutBuffer += chunk.toString("utf8");
-            const lines = stdoutBuffer.split("\n");
-            stdoutBuffer = lines.pop() ?? "";
+          spawnedChild.stdout.on("data", (chunk) => {
+            processStdoutBuffer += chunk.toString("utf8");
+            const lines = processStdoutBuffer.split("\n");
+            processStdoutBuffer = lines.pop() ?? "";
             for (const line of lines) {
               handleSidecarLine(line, {
                 sendTranscript,
                 queueTranscript,
                 onReady: () => {
+                  if (child !== spawnedChild || closeRequested) return;
+                  processReady = true;
                   readySettled = true;
                   resolve();
                 },
@@ -93,27 +101,39 @@ export function createSherpaOnnxTranscription({
             }
           });
 
-          child.stderr.on("data", (chunk) => {
+          spawnedChild.stderr.on("data", (chunk) => {
             const message = chunk.toString("utf8").trim();
             if (message) options.onStatus?.(`[sherpa-onnx] ${message}`);
           });
 
-          child.on("error", (error) => {
+          spawnedChild.on("error", (error) => {
+            if (closeRequested) return;
+            if (!processReady) {
+              reject(error);
+              return;
+            }
+            runtimeFailureReported = true;
             sendTranscript({ type: "error", message: error.message });
-            reject(error);
           });
 
-          child.on("close", (code) => {
-            if (!readySettled) {
+          spawnedChild.on("close", (code) => {
+            if (!processReady) {
               reject(new Error(`Sherpa-ONNX sidecar exited before it was ready${code === null ? "" : ` (code ${code})`}.`));
             }
+            if (child !== spawnedChild) return;
             child = null;
             readyPromise = null;
             readySettled = false;
+            if (processReady && !closeRequested && !runtimeFailureReported) {
+              sendTranscript({
+                type: "error",
+                message: `Sherpa-ONNX sidecar exited unexpectedly${code === null ? "" : ` (code ${code})`}.`,
+              });
+            }
           });
         });
       } catch (error) {
-        sendTranscript({ type: "error", message: error.message });
+        if (!closeRequested) sendTranscript({ type: "error", message: error.message });
         readyPromise = null;
         throw error;
       }
@@ -125,27 +145,41 @@ export function createSherpaOnnxTranscription({
   return {
     ready: prepare,
     sendAudio: (audio) => {
-      if (!audio || !child || !readySettled) return;
-      child.stdin.write(`${JSON.stringify({
-        type: "audio",
-        encoding: "pcm16le",
-        sampleRate: SAMPLE_RATE,
-        audio,
-      })}\n`);
+      if (!audio || closeRequested) return;
+      if (child && readySettled) {
+        writeAudio(child, audio);
+        return;
+      }
+      prepare()
+        .then(() => {
+          if (child && readySettled && !closeRequested) writeAudio(child, audio);
+        })
+        .catch(() => {});
     },
     stop: () => {
       if (!child || !readySettled) return;
       child.stdin.write(`${JSON.stringify({ type: "stop" })}\n`);
     },
     close: () => {
-      if (!child) return;
-      child.stdin.end();
-      child.kill();
+      closeRequested = true;
+      const childToClose = child;
       child = null;
       readyPromise = null;
       readySettled = false;
+      if (!childToClose) return;
+      childToClose.stdin.end();
+      childToClose.kill();
     },
   };
+}
+
+function writeAudio(child, audio) {
+  child.stdin.write(`${JSON.stringify({
+    type: "audio",
+    encoding: "pcm16le",
+    sampleRate: SAMPLE_RATE,
+    audio,
+  })}\n`);
 }
 
 function withNativeLibraryPath(env, libraryDir, platform = process.platform) {
