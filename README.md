@@ -4,7 +4,7 @@
   <a href="https://github.com/kunchenguid/autopreso/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/kunchenguid/autopreso/ci.yml?style=flat-square&label=ci" /></a>
   <a href="https://github.com/kunchenguid/autopreso/actions/workflows/release-please.yml"><img alt="Release" src="https://img.shields.io/github/actions/workflow/status/kunchenguid/autopreso/release-please.yml?style=flat-square&label=release" /></a>
   <a href="https://www.npmjs.com/package/autopreso"><img alt="npm" src="https://img.shields.io/npm/v/autopreso?style=flat-square" /></a>
-  <a href="https://img.shields.io/badge/platform-macOS-blue?style=flat-square"><img alt="Platform" src="https://img.shields.io/badge/platform-macOS-blue?style=flat-square" /></a>
+  <a href="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"><img alt="Platforms: macOS, Linux, and Windows" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square" /></a>
   <a href="https://x.com/kunchenguid"><img alt="X" src="https://img.shields.io/badge/X-@kunchenguid-black?style=flat-square" /></a>
   <a href="https://discord.gg/Wsy2NpnZDu"><img alt="Discord" src="https://img.shields.io/discord/1439901831038763092?style=flat-square&label=discord" /></a>
 </p>
@@ -134,11 +134,11 @@ Provider variables only seed `settings.json` on first run. Once the file exists,
 | `OPENAI_BASE_URL`      | Seeds the OpenAI agent API base URL.                  |
 | `CODEX_MODEL`          | Seeds the Codex model.                                |
 | `OLLAMA_MODEL`         | Seeds the Ollama model.                               |
-| `AUTOPRESO_SHERPA_MODEL_DIR` | Sherpa-ONNX model cache directory. Default: `~/.cache/autopreso/sherpa-onnx/zipformer-bilingual-zh-en`. |
+| `AUTOPRESO_SHERPA_MODEL_DIR` | Sherpa-ONNX model cache directory. Defaults under `$XDG_CACHE_HOME` when set, otherwise `~/.cache/autopreso/sherpa-onnx/zipformer-bilingual-zh-en`. |
 | `AUTOPRESO_CACHE_LOG`  | Cache usage log path. Default: `~/.config/autopreso/logs/cache.log`. |
 | `AUTOPRESO_DEBUG_LOG`  | Agent debug log path. Default: `~/.config/autopreso/logs/debug.log`. |
 
-Local transcription uses the streaming `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` model. The first local run downloads about 190 MB of checksum-verified model files and caches them. It recognizes Chinese, English, and code-switched speech without selecting a language. Sherpa-ONNX publishes native runtimes for supported macOS, Linux, and Windows architectures; OpenAI Realtime remains available from the STT panel.
+Local transcription uses the streaming `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` model. The first local run downloads about 190 MiB of checksum-verified model files and caches them. It recognizes Chinese, English, and code-switched speech without selecting a language. Saved Moonshine settings are migrated to Sherpa-ONNX automatically on the next start. Sherpa-ONNX publishes native runtimes for supported macOS, Linux, and Windows architectures; OpenAI Realtime remains available from the STT panel.
 
 ## Credits
 

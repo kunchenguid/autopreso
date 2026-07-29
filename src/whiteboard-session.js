@@ -75,7 +75,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
 
   const queue = createTranscriptTurnQueue({
     // No queue-level debounce: turn boundaries are decided upstream by the
-    // transcription provider (delta-quiet for OpenAI; per-chunk commits for
+    // transcription provider (delta-quiet for OpenAI; endpoint commits for
     // Sherpa-ONNX), so by the time queueTranscript fires, the chunk represents
     // a complete utterance and should run immediately.
     debounceMs: 0,

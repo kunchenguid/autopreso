@@ -45,7 +45,7 @@ export function defaultSherpaOnnxModelDir({ env = process.env, homedir = os.home
 
 export async function ensureSherpaOnnxModel({
   modelDir = defaultSherpaOnnxModelDir(),
-  files = SHERPA_ONNX_MODEL_FILES,
+  files = /** @type {readonly { name: string, size?: number, sha256: string, url: string }[]} */ (SHERPA_ONNX_MODEL_FILES),
   fetchFn = fetch,
   onStatus = /** @type {(message: string) => void} */ (() => {}),
 } = {}) {
@@ -104,7 +104,7 @@ function createSizeGuard(file) {
     },
   });
   Object.defineProperty(stream, "received", { get: () => received });
-  return stream;
+  return /** @type {Transform & { readonly received: number }} */ (stream);
 }
 
 async function fileMatchesChecksum(filePath, expected) {
