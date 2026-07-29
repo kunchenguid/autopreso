@@ -56,11 +56,13 @@ export function createSherpaOnnxTranscription({
   let readyPromise = null;
   let readySettled = false;
   let closeRequested = false;
+  let writeMessage = null;
 
-  async function prepare() {
+  function prepare() {
     if (readyPromise) return readyPromise;
 
-    readyPromise = (async () => {
+    let preparationPromise;
+    preparationPromise = (async () => {
       try {
         const modelDir = await ensureModel({
           modelDir: defaultSherpaOnnxModelDir({ env: processEnv }),
@@ -79,9 +81,36 @@ export function createSherpaOnnxTranscription({
             { stdio: ["pipe", "pipe", "pipe"], env: childEnv },
           );
           let processReady = false;
-          let runtimeFailureReported = false;
           let processStdoutBuffer = "";
           child = spawnedChild;
+
+          const clearProcess = () => {
+            if (child !== spawnedChild) return false;
+            child = null;
+            writeMessage = null;
+            readySettled = false;
+            if (readyPromise === preparationPromise) readyPromise = null;
+            return true;
+          };
+
+          const handleRuntimeFailure = (error, { kill = true } = {}) => {
+            if (closeRequested || !clearProcess()) return;
+            sendTranscript({ type: "error", message: error.message });
+            if (kill) {
+              try {
+                spawnedChild.kill();
+              } catch {}
+            }
+          };
+
+          writeMessage = (message) => {
+            if (child !== spawnedChild || closeRequested) return;
+            try {
+              spawnedChild.stdin.write(`${JSON.stringify(message)}\n`);
+            } catch (error) {
+              handleRuntimeFailure(error);
+            }
+          };
 
           spawnedChild.stdout.on("data", (chunk) => {
             processStdoutBuffer += chunk.toString("utf8");
@@ -106,38 +135,48 @@ export function createSherpaOnnxTranscription({
             if (message) options.onStatus?.(`[sherpa-onnx] ${message}`);
           });
 
+          spawnedChild.stdin.on?.("error", (error) => {
+            if (!processReady) {
+              clearProcess();
+              try {
+                spawnedChild.kill();
+              } catch {}
+              reject(error);
+              return;
+            }
+            handleRuntimeFailure(error);
+          });
+
           spawnedChild.on("error", (error) => {
             if (closeRequested) return;
             if (!processReady) {
               reject(error);
               return;
             }
-            runtimeFailureReported = true;
-            sendTranscript({ type: "error", message: error.message });
+            handleRuntimeFailure(error);
           });
 
           spawnedChild.on("close", (code) => {
             if (!processReady) {
               reject(new Error(`Sherpa-ONNX sidecar exited before it was ready${code === null ? "" : ` (code ${code})`}.`));
             }
-            if (child !== spawnedChild) return;
-            child = null;
-            readyPromise = null;
-            readySettled = false;
-            if (processReady && !closeRequested && !runtimeFailureReported) {
-              sendTranscript({
-                type: "error",
-                message: `Sherpa-ONNX sidecar exited unexpectedly${code === null ? "" : ` (code ${code})`}.`,
-              });
+            if (processReady) {
+              handleRuntimeFailure(
+                new Error(`Sherpa-ONNX sidecar exited unexpectedly${code === null ? "" : ` (code ${code})`}.`),
+                { kill: false },
+              );
+            } else {
+              clearProcess();
             }
           });
         });
       } catch (error) {
         if (!closeRequested) sendTranscript({ type: "error", message: error.message });
-        readyPromise = null;
+        if (readyPromise === preparationPromise) readyPromise = null;
         throw error;
       }
     })();
+    readyPromise = preparationPromise;
 
     return readyPromise;
   }
@@ -147,23 +186,33 @@ export function createSherpaOnnxTranscription({
     sendAudio: (audio) => {
       if (!audio || closeRequested) return;
       if (child && readySettled) {
-        writeAudio(child, audio);
+        writeMessage?.(audioMessage(audio));
         return;
       }
       prepare()
         .then(() => {
-          if (child && readySettled && !closeRequested) writeAudio(child, audio);
+          if (child && readySettled && !closeRequested) writeMessage?.(audioMessage(audio));
         })
         .catch(() => {});
     },
     stop: () => {
-      if (!child || !readySettled) return;
-      child.stdin.write(`${JSON.stringify({ type: "stop" })}\n`);
+      if (closeRequested) return;
+      if (child && readySettled) {
+        writeMessage?.({ type: "stop" });
+        return;
+      }
+      if (!readyPromise) return;
+      prepare()
+        .then(() => {
+          if (child && readySettled && !closeRequested) writeMessage?.({ type: "stop" });
+        })
+        .catch(() => {});
     },
     close: () => {
       closeRequested = true;
       const childToClose = child;
       child = null;
+      writeMessage = null;
       readyPromise = null;
       readySettled = false;
       if (!childToClose) return;
@@ -173,13 +222,13 @@ export function createSherpaOnnxTranscription({
   };
 }
 
-function writeAudio(child, audio) {
-  child.stdin.write(`${JSON.stringify({
+function audioMessage(audio) {
+  return {
     type: "audio",
     encoding: "pcm16le",
     sampleRate: SAMPLE_RATE,
     audio,
-  })}\n`);
+  };
 }
 
 function withNativeLibraryPath(env, libraryDir, platform = process.platform) {

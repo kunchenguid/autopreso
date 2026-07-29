@@ -128,7 +128,7 @@ test("createSherpaOnnxTranscription keeps the warmed process alive when recordin
   assert.equal(stdinWrites.includes("<kill>"), false);
 });
 
-test("createSherpaOnnxTranscription reports crashes and restarts on the next audio frame", async () => {
+test("createSherpaOnnxTranscription reports crashes and preserves stop ordering during recovery", async () => {
   const children = [];
   const messages = [];
   const transcription = createSherpaOnnxTranscription({
@@ -165,17 +165,70 @@ test("createSherpaOnnxTranscription reports crashes and restarts on the next aud
   }]);
 
   transcription.sendAudio("after-crash");
+  transcription.stop();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(children.length, 2);
   children[1].stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(JSON.parse(children[1].stdinWrites[0]), {
-    type: "audio",
-    encoding: "pcm16le",
-    sampleRate: 24000,
-    audio: "after-crash",
+  assert.deepEqual(
+    children[1].stdinWrites.map((write) => JSON.parse(write)),
+    [
+      {
+        type: "audio",
+        encoding: "pcm16le",
+        sampleRate: 24000,
+        audio: "after-crash",
+      },
+      { type: "stop" },
+    ],
+  );
+});
+
+test("createSherpaOnnxTranscription recovers from sidecar stdin errors", async () => {
+  const children = [];
+  const messages = [];
+  const transcription = createSherpaOnnxTranscription({
+    sendTranscript: (message) => messages.push(message),
+    queueTranscript: () => {},
+    options: { env: {}, sherpaOnnxModel: "zipformer-bilingual-zh-en" },
+    ensureModel: async () => "/tmp/sherpa-model",
+    resolveLibraryDir: () => "/tmp/sherpa-runtime",
+    resolveSidecarPath: () => "/tmp/sherpa-onnx-sidecar.cjs",
+    spawnProcess: () => {
+      const child = /** @type {any} */ (new EventEmitter());
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = new EventEmitter();
+      child.stdinWrites = [];
+      child.stdin.write = (value) => child.stdinWrites.push(value);
+      child.stdin.end = () => {};
+      child.kill = () => {
+        child.killed = true;
+        child.emit("close", null);
+      };
+      children.push(child);
+      return child;
+    },
   });
+
+  const ready = transcription.ready();
+  await new Promise((resolve) => setImmediate(resolve));
+  children[0].stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+  await ready;
+
+  children[0].stdin.emit("error", new Error("write EPIPE"));
+
+  assert.equal(children[0].killed, true);
+  assert.deepEqual(messages, [{ type: "error", message: "write EPIPE" }]);
+
+  transcription.sendAudio("after-pipe-error");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(children.length, 2);
+  children[1].stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(JSON.parse(children[1].stdinWrites[0]).audio, "after-pipe-error");
 });
 
 test("createSherpaOnnxTranscription reports model preparation failures", async () => {
