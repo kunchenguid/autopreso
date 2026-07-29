@@ -18,7 +18,7 @@ const OPENAI_TRANSCRIPTION_MODELS = [
   "gpt-4o-mini-transcribe",
   "whisper-1",
 ];
-const MOONSHINE_MODELS = ["tiny", "small", "medium"];
+const SHERPA_ONNX_MODELS = ["zipformer-bilingual-zh-en"];
 const MIC_STORAGE_KEY = "autopreso.mic";
 const PANEL_HIDDEN_STORAGE_KEY = "autopreso.panelHidden";
 
@@ -1131,7 +1131,7 @@ function CostRow({ label, sub, value, title }) {
 
 function costSubtitle(entry) {
   if (!entry?.provider) return "";
-  if (entry.provider === "moonshine")
+  if (entry.provider === "sherpa-onnx")
     return `${entry.model ?? ""} (local)`.trim();
   if (entry.provider === "ollama") return `${entry.model ?? ""} (local)`.trim();
   if (entry.provider === "codex")
@@ -1249,8 +1249,8 @@ function agentModelLabel(settings) {
 }
 
 function sttModelLabel(settings) {
-  if (settings.transcription.provider === "moonshine")
-    return settings.transcription.moonshine.model;
+  if (settings.transcription.provider === "sherpa-onnx")
+    return settings.transcription.sherpaOnnx.model;
   return settings.transcription.openai.model;
 }
 
@@ -1527,8 +1527,8 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
   const [provider, setProvider] = React.useState(
     settings.transcription.provider,
   );
-  const [moonshineModel, setMoonshineModel] = React.useState(
-    settings.transcription.moonshine.model,
+  const [sherpaOnnxModel, setSherpaOnnxModel] = React.useState(
+    settings.transcription.sherpaOnnx.model,
   );
   const [openaiModel, setOpenaiModel] = React.useState(
     settings.transcription.openai.model,
@@ -1543,9 +1543,9 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
   async function submit() {
     setBusy(true);
     setErrorText("");
-    const patch = { transcription: { provider, moonshine: {}, openai: {} } };
-    if (provider === "moonshine")
-      patch.transcription.moonshine.model = moonshineModel;
+    const patch = { transcription: { provider, sherpaOnnx: {}, openai: {} } };
+    if (provider === "sherpa-onnx")
+      patch.transcription.sherpaOnnx.model = sherpaOnnxModel;
     if (provider === "openai") patch.transcription.openai.model = openaiModel;
     if (openaiKey) patch.apiKeys = { openai: openaiKey };
     try {
@@ -1570,16 +1570,16 @@ function TranscriptionEditor({ settings, onSave, onCancel }) {
         },
         React.createElement(
           "option",
-          { value: "moonshine" },
-          "Moonshine (local)",
+          { value: "sherpa-onnx" },
+          "Sherpa-ONNX Zipformer (local, 中文 / English / 中英混合)",
         ),
         React.createElement("option", { value: "openai" }, "OpenAI Realtime"),
       ),
     ),
-    provider === "moonshine"
+    provider === "sherpa-onnx"
       ? field(
           "Model",
-          select(moonshineModel, setMoonshineModel, MOONSHINE_MODELS, busy),
+          select(sherpaOnnxModel, setSherpaOnnxModel, SHERPA_ONNX_MODELS, busy),
         )
       : null,
     provider === "openai"

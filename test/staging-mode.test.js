@@ -35,7 +35,7 @@ async function startTestServer(extraOptions = {}) {
   const defaults = {
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: transcription.factory,
     generateTextFn: async () => ({ text: "DONE", finishReason: "stop" }),
@@ -206,7 +206,7 @@ test("settings reload reapplies staging keyword vocabulary to the new transcript
     transcription: {
       provider: "openai",
       openai: { model: "gpt-4o-mini-transcribe" },
-      moonshine: { model: "medium" },
+      sherpaOnnx: { model: "zipformer-bilingual-zh-en" },
     },
     apiKeys: { openai: "test" },
   };
@@ -250,7 +250,7 @@ test("settings reload reapplies staging keyword vocabulary to the new transcript
         transcription: {
           provider: "openai",
           openai: { model: "gpt-4o-transcribe" },
-          moonshine: { model: "medium" },
+          sherpaOnnx: { model: "zipformer-bilingual-zh-en" },
         },
         apiKeys: { openai: "test" },
       }),
@@ -816,8 +816,8 @@ function makeSettingsStore(seed = {}) {
       ollama: { model: "", baseURL: "http://localhost:11434/v1" },
     },
     transcription: {
-      provider: "moonshine",
-      moonshine: { model: "medium" },
+      provider: "sherpa-onnx",
+      sherpaOnnx: { model: "zipformer-bilingual-zh-en" },
       openai: { model: "gpt-realtime-whisper" },
     },
     apiKeys: { openai: "sk-test" },

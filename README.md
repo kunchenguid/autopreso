@@ -26,7 +26,7 @@ Stage a few seed elements, hit start, and present.
 
 - **Hands free** - your speech drives an agent that edits an Excalidraw scene as you talk, no clicking required.
 - **Bring your own model** - use your OpenAI API key or Codex subscription. Auto Preso itself is completely free and open source.
-- **Can run locally** - use Moonshine for transcription and Ollama for the agent and you get a fully local setup.
+- **Can run locally** - use Sherpa-ONNX Zipformer for Chinese, English, or mixed Chinese-English transcription and Ollama for the agent.
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ npm start
 ```
   ┌──────────┐   audio    ┌──────────────┐   text   ┌──────────────┐
   │   mic    │──────────► │     STT      │────────► │  whiteboard  │
-  │ (browser)│   24kHz    │ Moonshine /  │ chunks   │    agent     │
+  │ (browser)│   24kHz    │ Sherpa-ONNX /│ chunks   │    agent     │
   └──────────┘            │ OpenAI WS    │          │ (OpenAI /    │
                           └──────────────┘          │  Codex /     │
                                                     │  Ollama)     │
@@ -114,13 +114,13 @@ When no settings file exists, autopreso picks providers based on what it finds i
 
 | You have...                                | Agent provider                 | Transcription              |
 | ------------------------------------------ | ------------------------------ | -------------------------- |
-| Nothing                                    | OpenAI `gpt-5.5` (needs a key) | Moonshine `medium` (macOS) |
+| Nothing                                    | OpenAI `gpt-5.5` (needs a key) | Sherpa-ONNX bilingual Zipformer |
 | `OPENAI_API_KEY` in env                    | OpenAI `gpt-5.5`               | OpenAI Realtime            |
-| Codex CLI signed in (`~/.codex/auth.json`) | Codex `gpt-5.5-fast`           | Moonshine `medium`         |
+| Codex CLI signed in (`~/.codex/auth.json`) | Codex `gpt-5.5-fast`           | Sherpa-ONNX bilingual Zipformer |
 | Codex CLI signed in + `OPENAI_API_KEY`     | Codex `gpt-5.5-fast`           | OpenAI Realtime            |
-| `OLLAMA_MODEL` set                         | Ollama (your model)            | Moonshine `medium`         |
+| `OLLAMA_MODEL` set                         | Ollama (your model)            | Sherpa-ONNX bilingual Zipformer |
 
-Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `OPENAI_API_KEY`** for the agent. Transcription flips to OpenAI Realtime any time an OpenAI key is present, otherwise Moonshine. After first run, this auto-detection no longer applies - change providers from the in-app status panel.
+Auto-detection precedence: **Codex CLI auth wins over `OLLAMA_MODEL` wins over `OPENAI_API_KEY`** for the agent. Transcription flips to OpenAI Realtime any time an OpenAI key is present, otherwise Sherpa-ONNX. After first run, this auto-detection no longer applies - change providers from the in-app status panel.
 
 ### Environment variables
 
@@ -134,15 +134,16 @@ Provider variables only seed `settings.json` on first run. Once the file exists,
 | `OPENAI_BASE_URL`      | Seeds the OpenAI agent API base URL.                  |
 | `CODEX_MODEL`          | Seeds the Codex model.                                |
 | `OLLAMA_MODEL`         | Seeds the Ollama model.                               |
+| `AUTOPRESO_SHERPA_MODEL_DIR` | Sherpa-ONNX model cache directory. Default: `~/.cache/autopreso/sherpa-onnx/zipformer-bilingual-zh-en`. |
 | `AUTOPRESO_CACHE_LOG`  | Cache usage log path. Default: `~/.config/autopreso/logs/cache.log`. |
 | `AUTOPRESO_DEBUG_LOG`  | Agent debug log path. Default: `~/.config/autopreso/logs/debug.log`. |
 
-Local Moonshine transcription ships as an optional native sidecar for `darwin-arm64` and `darwin-x64`. On other platforms, choose OpenAI Realtime in the STT panel.
+Local transcription uses the streaming `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` model. The first local run downloads about 190 MB of checksum-verified model files and caches them. It recognizes Chinese, English, and code-switched speech without selecting a language. Sherpa-ONNX publishes native runtimes for supported macOS, Linux, and Windows architectures; OpenAI Realtime remains available from the STT panel.
 
 ## Credits
 
 - [Excalidraw](https://github.com/excalidraw/excalidraw) - the whiteboard canvas, scene model, and rendering.
-- [Moonshine](https://github.com/moonshine-ai/moonshine) the local speech-to-text model that makes the offline path possible.
+- [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) and the Apache-2.0 [bilingual streaming Zipformer model](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20) power local speech recognition.
 - [Vercel AI SDK](https://github.com/vercel/ai) - tool-calling agent loop and provider abstraction.
 
 ## Development
@@ -152,5 +153,4 @@ npm install                       # install deps
 npm run dev                       # run the CLI from source
 npm run typecheck                 # tsc --noEmit
 npm test                          # node --test
-npm run build:moonshine-sidecars  # build the Python sidecar binaries
 ```

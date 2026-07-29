@@ -3,87 +3,47 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
+import {
+  SHERPA_ONNX_MODEL_FILES,
+  SHERPA_ONNX_MODEL_NAME,
+  SHERPA_ONNX_MODEL_REVISION,
+} from "../src/sherpa-model.js";
+
 const rootDir = path.join(import.meta.dirname, "..");
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(rootDir, relativePath), "utf8"));
 }
 
-test("root package keeps platform sidecars as optional published packages, not local workspaces", () => {
+test("root package ships the Sherpa-ONNX runtime without private sidecar packages", () => {
   const rootPackage = readJson("package.json");
 
   assert.deepEqual(rootPackage.files, ["assets/", "LICENSE", "public/", "src/"]);
   assert.equal(rootPackage.bin["autopreso"], "src/cli.js");
   assert.equal(rootPackage.scripts.dev, "node ./src/cli.js");
-  assert.equal(rootPackage.scripts["build:moonshine-sidecars"], "node ./scripts/build-moonshine-sidecars.js");
-  assert.equal(rootPackage.scripts["prepare:release-packages"], "node ./scripts/prepare-release-packages.js");
   assert.equal(rootPackage.workspaces, undefined);
-  assert.ok(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-arm64"]);
-  assert.ok(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-x64"]);
+  assert.equal(rootPackage.optionalDependencies, undefined);
+  assert.equal(rootPackage.dependencies["sherpa-onnx-node"], "^1.13.4");
 });
 
-test("Moonshine sidecar packages share one version, decoupled from autopreso", () => {
-  const armPackage = readJson("packages/moonshine-darwin-arm64/package.json");
-  const x64Package = readJson("packages/moonshine-darwin-x64/package.json");
-  const rootPackage = readJson("package.json");
+test("bilingual Zipformer model files are revision-pinned and checksum-pinned", () => {
+  assert.equal(SHERPA_ONNX_MODEL_NAME, "zipformer-bilingual-zh-en");
+  assert.match(SHERPA_ONNX_MODEL_REVISION, /^[0-9a-f]{40}$/);
+  assert.equal(SHERPA_ONNX_MODEL_FILES.length, 4);
 
-  // Both sidecar packages must always agree on their version, since they ship
-  // the same binary contract for two architectures and release-please bumps
-  // them in lockstep via the moonshine-sidecars component.
-  assert.equal(armPackage.version, x64Package.version);
-
-  // Root optionalDependencies must pin the exact sidecar version that's
-  // checked into the sidecar package.jsons, otherwise `npm ci` (and the
-  // resolver in src/moonshine-transcription.js) sees a version mismatch.
-  assert.equal(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-arm64"], armPackage.version);
-  assert.equal(rootPackage.optionalDependencies["@autopreso/moonshine-darwin-x64"], x64Package.version);
-});
-
-test("Moonshine sidecar packages expose the resolver binary contract", () => {
-  const packages = [
-    {
-      dir: "packages/moonshine-darwin-arm64",
-      name: "@autopreso/moonshine-darwin-arm64",
-      cpu: "arm64",
-    },
-    {
-      dir: "packages/moonshine-darwin-x64",
-      name: "@autopreso/moonshine-darwin-x64",
-      cpu: "x64",
-    },
-  ];
-
-  for (const sidecarPackage of packages) {
-    const packageJson = readJson(`${sidecarPackage.dir}/package.json`);
-
-    assert.equal(packageJson.name, sidecarPackage.name);
-    assert.deepEqual(packageJson.os, ["darwin"]);
-    assert.deepEqual(packageJson.cpu, [sidecarPackage.cpu]);
-    assert.deepEqual(packageJson.files, ["bin/autopreso-moonshine"]);
-    assert.equal(packageJson.bin["autopreso-moonshine"], "bin/autopreso-moonshine");
+  for (const file of SHERPA_ONNX_MODEL_FILES) {
+    assert.equal(Number.isSafeInteger(file.size) && file.size > 0, true);
+    assert.match(file.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(file.url.includes(`/resolve/${SHERPA_ONNX_MODEL_REVISION}/`), true);
   }
 });
 
-test("Moonshine sidecars are built from a pinned release recipe", () => {
-  const sidecarConfig = readJson("moonshine-sidecar.config.json");
+test("release-please has a single autopreso component", () => {
   const releasePlease = readJson("release-please-config.json");
 
-  assert.equal(sidecarConfig.moonshineVoiceVersion, "0.0.59");
-  assert.equal(sidecarConfig.moonshineReleaseTag, "v0.0.59");
-  assert.deepEqual(sidecarConfig.targets.map((target) => target.packageDir), [
-    "packages/moonshine-darwin-arm64",
-    "packages/moonshine-darwin-x64",
-  ]);
-
-  // release-please runs in monorepo manifest mode with two components: the
-  // root autopreso CLI and the moonshine-sidecars group. The sidecar group
-  // owns the moonshine config and build scripts via include-paths so that
-  // only commits touching those files trigger sidecar version bumps.
   assert.equal(releasePlease.packages["."]["release-type"], "node");
   assert.equal(releasePlease.packages["."].component, "autopreso");
-  assert.equal(releasePlease.packages["packages/moonshine-darwin-arm64"].component, "moonshine-sidecars");
-  assert.ok(releasePlease.packages["packages/moonshine-darwin-arm64"]["include-paths"].includes("moonshine-sidecar.config.json"));
-  assert.ok(releasePlease.packages["."]["exclude-paths"].includes("moonshine-sidecar.config.json"));
+  assert.deepEqual(Object.keys(releasePlease.packages), ["."]);
 });
 
 test("release workflow uses current actions and npm trusted publishing", () => {
@@ -99,7 +59,7 @@ test("release workflow uses current actions and npm trusted publishing", () => {
   assert.equal(releaseWorkflow.includes("googleapis/release-please-action@v5"), true);
   assert.equal(releaseWorkflow.includes("actions/checkout@v6"), true);
   assert.equal(releaseWorkflow.includes("actions/setup-node@v6"), true);
-  assert.equal(releaseWorkflow.includes("actions/setup-python@v6"), true);
+  assert.equal(releaseWorkflow.includes("actions/setup-python"), false);
   assert.equal(ciWorkflow.includes("actions/checkout@v6"), true);
   assert.equal(ciWorkflow.includes("actions/setup-node@v6"), true);
 });

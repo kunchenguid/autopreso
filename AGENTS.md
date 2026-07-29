@@ -10,8 +10,6 @@ npm run typecheck                 # tsc --noEmit
 npm test                          # node --test, runs all tests in test/
 node --test test/server-startup.test.js   # run a single test file
 node --test --test-name-pattern="warmup" test/whiteboard-session.test.js  # filter by test name
-npm run build:moonshine-sidecars  # build Python -> single-binary sidecars for macOS arm64+x64
-node ./scripts/build-moonshine-sidecars.js darwin-arm64   # build only one target
 ```
 
 There is no separate lint step. CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck`, and `npm test` on Node 24.
@@ -52,7 +50,7 @@ Before the user speaks, `startWarmupLoop` repeatedly fires the agent against the
 
 ### Transcript turn queue (`src/transcript-turn-queue.js`)
 
-Transcript chunks are gated by an `isReady` predicate, but the live session sets queue debounce to `0` because turn boundaries are decided upstream. OpenAI Realtime uses `src/openai-transcription.js` delta-quiet flushing instead of `transcription.completed` events, while Moonshine emits per-chunk commits. While a turn is running, additional chunks are buffered and concatenated for the next turn. This means the agent never has more than one in-flight turn, but it always sees the most recent burst of speech in one shot. `isTrivialTranscript` in `whiteboard-session.js` filters out filler-only chunks ("uh", "okay", etc.) so they don't trigger turns on their own.
+Transcript chunks are gated by an `isReady` predicate, but the live session sets queue debounce to `0` because turn boundaries are decided upstream. OpenAI Realtime uses `src/openai-transcription.js` delta-quiet flushing instead of `transcription.completed` events, while Sherpa-ONNX commits at endpoint boundaries. While a turn is running, additional chunks are buffered and concatenated for the next turn. This means the agent never has more than one in-flight turn, but it always sees the most recent burst of speech in one shot. `isTrivialTranscript` in `whiteboard-session.js` filters out filler-only chunks ("uh", "okay", etc.) so they don't trigger turns on their own.
 
 ### Whiteboard edit model (`src/whiteboard-tools.js`)
 
@@ -70,7 +68,7 @@ Three providers, all routed through the `@ai-sdk/openai` adapter:
 
 ### Transcription providers
 
-- **Moonshine (default, local)** - `src/moonshine-transcription.js` spawns the platform-specific binary at `@autopreso/moonshine-<platform>/bin/autopreso-moonshine` (declared as **optional** dependencies; the install just skips on unsupported platforms). The binary is built from `scripts/moonshine-sidecar.py` via PyInstaller; only macOS arm64/x64 are currently packaged.
+- **Sherpa-ONNX Zipformer (default, local)** - `src/sherpa-onnx-transcription.js` verifies/downloads the pinned bilingual Chinese-English model and spawns `src/sherpa-onnx-sidecar.cjs`. The child process loads the platform-native `sherpa-onnx-node` runtime and performs streaming recognition without blocking the web server.
 - **OpenAI Realtime** - `src/openai-transcription.js` opens a WSS connection to `wss://api.openai.com/v1/realtime?intent=transcription` and streams PCM frames.
 
 The active provider is hot-swappable: `applyCurrent()` in `server.js`'s `createTranscriptionManager` rebuilds the underlying instance whenever settings change, without restarting the server. Any active session context is reapplied to the new provider.
@@ -91,25 +89,11 @@ The system prompt and tool schemas are defined inline in `src/server.js` (search
 
 ## Release process
 
-This repo uses **release-please** in **monorepo manifest mode** (`.github/workflows/release-please.yml`, `release-please-config.json`, `.release-please-manifest.json`).
-
-Two components version independently:
-
-- **`autopreso`** (root, `.`) - the CLI npm package. Bumps on any conventional commit _except_ those touching the sidecar paths (`packages/moonshine-darwin-*`, `moonshine-sidecar.config.json`, `scripts/moonshine-sidecar.py`, `scripts/build-moonshine-sidecars.js`).
-- **`moonshine-sidecars`** (`packages/moonshine-darwin-arm64`) - the platform sidecar npm packages. Bumps **only** when commits touch the sidecar paths above. The arm64 package is the release-please anchor; its version is mirrored into `packages/moonshine-darwin-x64/package.json` and into both `optionalDependencies` entries in the root `package.json` via `extra-files`. The two sidecar packages always share one version.
-
-Workflow consequences:
-
-- A typical change to `src/`, `public/`, or `test/` only bumps autopreso. The publish job for the sidecar group is skipped, so CI never runs the Python/PyInstaller build path on a regular release.
-- A change to `moonshine-sidecar.config.json` (e.g. bumping `moonshineVoiceVersion`) bumps the sidecars. CI will then build the Python sidecar binaries on `macos-15` (required by recent `moonshine-voice` wheels, which target `macosx_15_0_universal2`) and publish both `@autopreso/moonshine-darwin-{arm64,x64}` packages.
-- A commit that touches both kinds of paths bumps both components in a single release-please PR.
+This repo uses **release-please** in **manifest mode** (`.github/workflows/release-please.yml`, `release-please-config.json`, `.release-please-manifest.json`). The root `autopreso` npm package is the only release component. `sherpa-onnx-node` supplies its own platform-native optional packages, so this repository does not build or publish native speech sidecars.
 
 Other notes:
 
 - `CHANGELOG.md` and `.release-please-manifest.json` are auto-generated. Per global rules, never hand-edit them.
-- Sidecar binaries are produced by `scripts/build-moonshine-sidecars.js` and must be built on macOS (the script enforces this).
-- `scripts/prepare-release-packages.js` is now a verification step: it confirms each sidecar's `package.json` version matches the root `optionalDependencies` entry and that the binary exists. Version writing is owned by release-please's `extra-files`, not this script.
-- The published-on-npm sidecar version may lag autopreso; that's by design (pinning the same binary keeps users from re-downloading on every CLI patch).
 
 ## Project status (from README)
 

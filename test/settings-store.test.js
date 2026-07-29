@@ -84,10 +84,11 @@ test("createSettingsStore tolerates Codex auth read errors and falls back to oth
   assert.equal(settings.agent.provider, "openai");
 });
 
-test("createSettingsStore falls back to moonshine transcription without OPENAI_API_KEY", async () => {
+test("createSettingsStore falls back to Sherpa-ONNX bilingual transcription without OPENAI_API_KEY", async () => {
   const store = createSettingsStore({ filePath: await tempPath(), env: {}, readCodexAuth: noCodexAuth });
   const settings = await store.load();
-  assert.equal(settings.transcription.provider, "moonshine");
+  assert.equal(settings.transcription.provider, "sherpa-onnx");
+  assert.equal(settings.transcription.sherpaOnnx.model, "zipformer-bilingual-zh-en");
 });
 
 test("createSettingsStore.save deep-merges and persists to disk", async () => {
@@ -100,7 +101,27 @@ test("createSettingsStore.save deep-merges and persists to disk", async () => {
   const settings = await reloaded.load();
   assert.equal(settings.transcription.provider, "openai");
   assert.equal(settings.transcription.openai.model, "gpt-realtime-whisper");
-  assert.equal(settings.transcription.moonshine.model, DEFAULT_SETTINGS.transcription.moonshine.model);
+  assert.equal(settings.transcription.sherpaOnnx.model, DEFAULT_SETTINGS.transcription.sherpaOnnx.model);
+});
+
+test("createSettingsStore migrates saved Moonshine settings to Sherpa-ONNX", async () => {
+  const filePath = await tempPath();
+  await fs.writeFile(filePath, JSON.stringify({
+    transcription: {
+      provider: "moonshine",
+      moonshine: { model: "medium" },
+      openai: { model: "gpt-realtime-whisper" },
+    },
+  }));
+
+  const store = createSettingsStore({ filePath, env: {}, readCodexAuth: noCodexAuth });
+  const settings = await store.load();
+  assert.equal(settings.transcription.provider, "sherpa-onnx");
+  assert.equal(settings.transcription.sherpaOnnx.model, "zipformer-bilingual-zh-en");
+
+  const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
+  assert.equal(persisted.transcription.provider, "sherpa-onnx");
+  assert.equal(persisted.transcription.moonshine, undefined);
 });
 
 test("createSettingsStore.save rejects oversized agent instructions", async () => {

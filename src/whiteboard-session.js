@@ -76,7 +76,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
   const queue = createTranscriptTurnQueue({
     // No queue-level debounce: turn boundaries are decided upstream by the
     // transcription provider (delta-quiet for OpenAI; per-chunk commits for
-    // Moonshine), so by the time queueTranscript fires, the chunk represents
+    // Sherpa-ONNX), so by the time queueTranscript fires, the chunk represents
     // a complete utterance and should run immediately.
     debounceMs: 0,
     // A turn is "ready" only when the accumulated buffer has at least one

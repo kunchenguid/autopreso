@@ -15,8 +15,8 @@ import {
   defaultWhiteboardAgentProvider,
   resolveAgentProviderFromSettings,
 } from "./agent-provider.js";
-import { createMoonshineTranscription as createDefaultMoonshineTranscription } from "./moonshine-transcription.js";
 import { createOpenAITranscription as createDefaultOpenAITranscription } from "./openai-transcription.js";
+import { createSherpaOnnxTranscription as createDefaultSherpaOnnxTranscription } from "./sherpa-onnx-transcription.js";
 import { audioSecondsFromBase64Pcm16 } from "./session-cost.js";
 import { validateAgentInstructions } from "./settings-store.js";
 import { broadcast, createWhiteboardSession } from "./whiteboard-session.js";
@@ -254,7 +254,7 @@ async function createTranscriptionManager({ options, wss, queueTranscript, state
     if (!settings) return options;
     return {
       ...options,
-      moonshineModel: settings.transcription.moonshine.model,
+      sherpaOnnxModel: settings.transcription.sherpaOnnx.model,
       openaiTranscriptionModel: settings.transcription.openai.model,
       env: { ...(options.env ?? process.env), OPENAI_API_KEY: settings.apiKeys?.openai || (options.env ?? process.env).OPENAI_API_KEY },
     };
@@ -264,25 +264,25 @@ async function createTranscriptionManager({ options, wss, queueTranscript, state
     if (options.createTranscription) return options.createTranscription;
     const provider = settings ? settings.transcription.provider : options.transcriptionProvider;
     if (provider === "openai") return createDefaultOpenAITranscription;
-    return createDefaultMoonshineTranscription;
+    return createDefaultSherpaOnnxTranscription;
   }
 
   function describeLabel(settings) {
     if (settings) {
       if (settings.transcription.provider === "openai") return `OpenAI ${settings.transcription.openai.model}`;
-      return `Moonshine ${settings.transcription.moonshine.model}`;
+      return `Sherpa-ONNX ${settings.transcription.sherpaOnnx.model}`;
     }
     if (options.transcriptionProvider === "openai") return `OpenAI ${options.openaiTranscriptionModel}`;
-    return `Moonshine ${options.moonshineModel}`;
+    return `Sherpa-ONNX ${options.sherpaOnnxModel}`;
   }
 
   async function applyCurrent() {
     const settings = options.settingsStore ? await options.settingsStore.load() : null;
     const newLabel = describeLabel(settings);
-    activeProvider = settings ? settings.transcription.provider : (options.transcriptionProvider ?? "moonshine");
+    activeProvider = settings ? settings.transcription.provider : (options.transcriptionProvider ?? "sherpa-onnx");
     activeModel = activeProvider === "openai"
       ? (settings?.transcription.openai.model ?? options.openaiTranscriptionModel ?? null)
-      : (settings?.transcription.moonshine.model ?? options.moonshineModel ?? null);
+      : (settings?.transcription.sherpaOnnx.model ?? options.sherpaOnnxModel ?? null);
 
     if (current && newLabel === label) return;
 
@@ -1054,8 +1054,8 @@ For multiline text:
 - You may use newlines in text and label strings.
 - In tool arguments, represent a newline with a single JSON newline escape: "\\n".
 - Do not double-escape newlines as "\\\\n"; that renders as the literal characters backslash and n on the canvas.
-- Correct: {"label":{"text":"Moonshine\\nTranscription"}}
-- Incorrect: {"label":{"text":"Moonshine\\\\nTranscription"}}
+- Correct: {"label":{"text":"Speech\\nTranscription"}}
+- Incorrect: {"label":{"text":"Speech\\\\nTranscription"}}
 
 For arrows:
 - Use type: "arrow"

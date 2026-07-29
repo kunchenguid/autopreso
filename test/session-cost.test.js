@@ -61,9 +61,9 @@ test("computeTranscriptionCost prices per minute for OpenAI models", () => {
   assert.equal(cost.cost.toFixed(6), (0.006 * 2).toFixed(6));
 });
 
-test("computeTranscriptionCost returns priced=false for moonshine (local)", () => {
+test("computeTranscriptionCost returns priced=false for Sherpa-ONNX (local)", () => {
   const cost = computeTranscriptionCost({
-    provider: "moonshine",
+    provider: "sherpa-onnx",
     model: "small",
     seconds: 600,
   });

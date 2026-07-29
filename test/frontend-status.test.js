@@ -74,3 +74,11 @@ test("frontend exposes OpenAI agent base URL and labels the key as API key", () 
   assert.match(appSource, /field\([\s\S]*"API key"[\s\S]*placeholder: "configured \(enter to replace\)"/);
   assert.doesNotMatch(appSource, /"OpenAI key"/);
 });
+
+test("frontend offers bilingual Sherpa-ONNX as the local transcription engine", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /value: "sherpa-onnx"/);
+  assert.match(appSource, /Sherpa-ONNX Zipformer \(local, 中文 \/ English \/ 中英混合\)/);
+  assert.match(appSource, /const SHERPA_ONNX_MODELS = \["zipformer-bilingual-zh-en"\]/);
+});

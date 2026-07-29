@@ -9,7 +9,7 @@ test("default whiteboard agent timeout is 90 seconds", () => {
   assert.equal(DEFAULT_AGENT_TIMEOUT_MS, 90_000);
 });
 
-test("startServer waits for Moonshine readiness before listening", async () => {
+test("startServer waits for Sherpa-ONNX readiness before listening", async () => {
   let resolveReady;
   let closed = false;
   const progressMessages = [];
@@ -20,7 +20,7 @@ test("startServer waits for Moonshine readiness before listening", async () => {
   const serverPromise = startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     onStatus: (message) => progressMessages.push(message),
     createTranscription: () => ({
@@ -39,14 +39,14 @@ test("startServer waits for Moonshine readiness before listening", async () => {
   });
   await Promise.resolve();
   assert.equal(started, false);
-  assert.deepEqual(progressMessages, ["Preparing Moonshine medium transcription model..."]);
+  assert.deepEqual(progressMessages, ["Preparing Sherpa-ONNX zipformer-bilingual-zh-en transcription model..."]);
 
   resolveReady();
   const { httpServer } = await serverPromise;
   assert.equal(started, true);
   assert.deepEqual(progressMessages, [
-    "Preparing Moonshine medium transcription model...",
-    "Moonshine medium transcription model ready.",
+    "Preparing Sherpa-ONNX zipformer-bilingual-zh-en transcription model...",
+    "Sherpa-ONNX zipformer-bilingual-zh-en transcription model ready.",
   ]);
 
   await new Promise((resolve) => httpServer.close(resolve));
@@ -57,7 +57,7 @@ test("websocket clients receive the current agent status on connect", async () =
   const { httpServer, url } = await startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: () => ({
       ready: async () => {},
@@ -91,7 +91,7 @@ test("websocket screenshot messages update agent visual context", async () => {
   const { httpServer, url, state } = await startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: ({ queueTranscript }) => ({
       ready: async () => {},
@@ -141,7 +141,7 @@ test("websocket stop makes synchronous transcript flush stale", async () => {
   const { httpServer, url, state } = await startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: ({ queueTranscript }) => ({
       ready: async () => {},

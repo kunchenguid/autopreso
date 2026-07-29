@@ -9,7 +9,7 @@ test("POST /api/session/reset restores starter whiteboard and clears agent histo
   const { httpServer, url, state } = await startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: () => ({
       ready: async () => {},
@@ -43,7 +43,7 @@ test("session reset broadcasts the starter whiteboard to connected websocket cli
   const { httpServer, url, state } = await startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: () => ({
       ready: async () => {},
@@ -93,7 +93,7 @@ test("POST /api/session/reset clears transcription vocabulary context", async ()
   const { httpServer, url } = await startServer({
     host: "127.0.0.1",
     port: 0,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: () => ({
       ready: async () => {},

@@ -7,43 +7,7 @@
     ".": {
       "release-type": "node",
       "package-name": "autopreso",
-      "component": "autopreso",
-      "exclude-paths": [
-        "packages/moonshine-darwin-arm64",
-        "packages/moonshine-darwin-x64",
-        "moonshine-sidecar.config.json",
-        "scripts/moonshine-sidecar.py",
-        "scripts/build-moonshine-sidecars.js"
-      ]
-    },
-    "packages/moonshine-darwin-arm64": {
-      "release-type": "node",
-      "package-name": "@autopreso/moonshine-darwin-arm64",
-      "component": "moonshine-sidecars",
-      "include-paths": [
-        "packages/moonshine-darwin-arm64",
-        "packages/moonshine-darwin-x64",
-        "moonshine-sidecar.config.json",
-        "scripts/moonshine-sidecar.py",
-        "scripts/build-moonshine-sidecars.js"
-      ],
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "packages/moonshine-darwin-x64/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "package.json",
-          "jsonpath": "$.optionalDependencies['@autopreso/moonshine-darwin-arm64']"
-        },
-        {
-          "type": "json",
-          "path": "package.json",
-          "jsonpath": "$.optionalDependencies['@autopreso/moonshine-darwin-x64']"
-        }
-      ]
+      "component": "autopreso"
     }
   }
 }

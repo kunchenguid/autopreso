@@ -1,6 +1,6 @@
 // Session cost tracking. The numbers in AGENT_PRICING / TRANSCRIPTION_PRICING
 // are OpenAI list pricing as of May 2026 - update them in one place if OpenAI
-// changes its rate card. Local providers (moonshine, ollama) are billed at
+// changes its rate card. Local providers (sherpa-onnx, ollama) are billed at
 // $0; codex routes through the user's ChatGPT subscription so it isn't
 // billed per-token here either.
 
@@ -46,7 +46,7 @@ export function computeAgentCost({ provider, model, usage }) {
 }
 
 export function computeTranscriptionCost({ provider, model, seconds }) {
-  if (provider === "moonshine") return { priced: false, cost: 0, reason: "local" };
+  if (provider === "sherpa-onnx") return { priced: false, cost: 0, reason: "local" };
   const ratePerMin = TRANSCRIPTION_PRICING[provider]?.[model];
   if (typeof ratePerMin !== "number") return { priced: false, cost: 0, reason: "unknown" };
   const cost = (Number(seconds) || 0) / 60 * ratePerMin;

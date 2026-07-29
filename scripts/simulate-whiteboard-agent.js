@@ -73,7 +73,7 @@ export async function runSimulation(options, agentProvider) {
     const server = await startServer({
       host: options.host,
       port: options.port,
-      moonshineModel: "medium",
+      sherpaOnnxModel: "zipformer-bilingual-zh-en",
       agentProvider,
       agentTimeoutMs: options.agentTimeoutMs,
       onAgentEvent: (event) => record(event),

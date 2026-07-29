@@ -2,11 +2,8 @@
 node_modules/
 .claude/scheduled_tasks.lock
 
-# Local Moonshine development environment
+# Local development environment
 .autopreso-dev/
-
-# Generated release sidecar binaries
-packages/*/bin/
 
 # Environment and secrets
 .env

@@ -34,7 +34,7 @@ test("parseCliArgs rejects --host because the server is loopback-only", () => {
 });
 
 test("parseCliArgs rejects unknown flags so model selection only happens in the UI", () => {
-  for (const arg of ["--moonshine-model", "--transcription-provider", "--openai-transcription-model"]) {
+  for (const arg of ["--sherpa-onnx-model", "--transcription-provider", "--openai-transcription-model"]) {
     assert.throws(
       () => parseCliArgs([arg, "value"], {}),
       new RegExp(`Unknown argument "${arg}"`),

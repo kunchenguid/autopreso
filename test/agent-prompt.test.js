@@ -108,8 +108,8 @@ test("whiteboard prompt explains newline escaping for multiline text", () => {
   assert.match(prompt, /For multiline text:/);
   assert.match(prompt, /represent a newline with a single JSON newline escape: "\\n"/);
   assert.match(prompt, /Do not double-escape newlines as "\\\\n"/);
-  assert.match(prompt, /Correct: \{"label":\{"text":"Moonshine\\nTranscription"\}\}/);
-  assert.match(prompt, /Incorrect: \{"label":\{"text":"Moonshine\\\\nTranscription"\}\}/);
+  assert.match(prompt, /Correct: \{"label":\{"text":"Speech\\nTranscription"\}\}/);
+  assert.match(prompt, /Incorrect: \{"label":\{"text":"Speech\\\\nTranscription"\}\}/);
 });
 
 test("whiteboard agent messages keep stable history before the volatile canvas snapshot", () => {

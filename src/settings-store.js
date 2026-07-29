@@ -13,8 +13,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     ollama: { model: "", baseURL: "http://localhost:11434/v1" },
   },
   transcription: {
-    provider: "moonshine",
-    moonshine: { model: "medium" },
+    provider: "sherpa-onnx",
+    sherpaOnnx: { model: "zipformer-bilingual-zh-en" },
     openai: { model: "gpt-realtime-whisper" },
   },
   apiKeys: {
@@ -29,7 +29,8 @@ export function createSettingsStore({ filePath, env = process.env, readCodexAuth
   async function readFromDisk() {
     try {
       const raw = await fs.readFile(filePath, "utf8");
-      return deepMerge(cloneDefaults(), JSON.parse(raw));
+      const { settings, migrated } = migrateSettings(JSON.parse(raw));
+      return { settings: deepMerge(cloneDefaults(), settings), migrated };
     } catch (error) {
       if (error.code === "ENOENT") return null;
       throw error;
@@ -48,7 +49,8 @@ export function createSettingsStore({ filePath, env = process.env, readCodexAuth
     if (cached) return cached;
     const fromDisk = await readFromDisk();
     if (fromDisk) {
-      cached = fromDisk;
+      cached = fromDisk.settings;
+      if (fromDisk.migrated) await writeToDisk(cached);
       return cached;
     }
     const seeded = seedFromEnv(cloneDefaults(), env, readCodexAuth);
@@ -92,6 +94,22 @@ function deepMerge(target, source) {
     }
   }
   return result;
+}
+
+function migrateSettings(settings) {
+  const next = JSON.parse(JSON.stringify(settings));
+  let migrated = false;
+
+  if (next.transcription?.provider === "moonshine") {
+    next.transcription.provider = "sherpa-onnx";
+    migrated = true;
+  }
+  if (next.transcription?.moonshine) {
+    delete next.transcription.moonshine;
+    migrated = true;
+  }
+
+  return { settings: next, migrated };
 }
 
 function seedFromEnv(settings, env, readCodexAuth) {

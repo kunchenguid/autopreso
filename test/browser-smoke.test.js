@@ -22,7 +22,7 @@ test("browser renders the app shell", async (t) => {
   const { httpServer, url } = await startServer({
     host: "127.0.0.1",
     port: 3229,
-    moonshineModel: "medium",
+    sherpaOnnxModel: "zipformer-bilingual-zh-en",
     openaiApiKey: "test",
     createTranscription: () => ({
       ready: async () => {},
