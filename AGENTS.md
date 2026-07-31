@@ -110,7 +110,15 @@ Other notes:
 - Sidecar binaries are produced by `scripts/build-moonshine-sidecars.js` and must be built on macOS (the script enforces this).
 - `scripts/prepare-release-packages.js` is now a verification step: it confirms each sidecar's `package.json` version matches the root `optionalDependencies` entry and that the binary exists. Version writing is owned by release-please's `extra-files`, not this script.
 - The published-on-npm sidecar version may lag autopreso; that's by design (pinning the same binary keeps users from re-downloading on every CLI patch).
+- Every `pull_request` workflow uses `paths-ignore` over the release-please output set so release PRs create zero CI runs. Drift is guarded by `test/release-ci-exclusions.test.js`. Both publish jobs regenerate `package-lock.json` with `npm install --package-lock-only` before `npm ci`; do not reintroduce a PR-time lockfile sync workflow.
 
 ## Project status (from README)
 
 The project is in **alpha**. The README's prominent warning is intentional - keep the rough-edges framing rather than over-promising stability when editing it.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
