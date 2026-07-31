@@ -65,6 +65,21 @@ test("frontend handles viewport commands from the agent", () => {
   assert.match(appSource, /action === "set_zoom"/);
 });
 
+test("frontend queues live whiteboard updates until Excalidraw is ready", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /const pendingSceneRef = React\.useRef\(null\)/);
+  assert.match(appSource, /const pendingViewportRef = React\.useRef\(null\)/);
+  assert.match(appSource, /pendingSceneRef\.current = \{ elements, recenter \}/);
+  assert.match(appSource, /pendingViewportRef\.current = command/);
+  assert.match(appSource, /if \(pendingSceneRef\.current\) return/);
+  assert.match(appSource, /clearTimeout\(userElementsSyncTimerRef\.current\)/);
+  assert.match(appSource, /if \(cleaned\.length === 0\) return/);
+  assert.match(appSource, /lastSyncedElementsHashRef\.current = JSON\.stringify\([\s\S]*nativeElementsToSkeletonForSync\(renderable\)/);
+  assert.match(appSource, /if \(pendingSceneRef\.current\)[\s\S]*applyScene\(pending\.elements, \{ recenter: pending\.recenter \}\)/);
+  assert.match(appSource, /if \(pendingViewportRef\.current\)[\s\S]*applyWhiteboardViewportCommand\(pending\)/);
+});
+
 test("frontend exposes OpenAI agent base URL and labels the key as API key", () => {
   const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
 
@@ -73,4 +88,28 @@ test("frontend exposes OpenAI agent base URL and labels the key as API key", () 
   assert.match(appSource, /provider === "openai"[\s\S]*field\([\s\S]*"Base URL"/);
   assert.match(appSource, /field\([\s\S]*"API key"[\s\S]*placeholder: "configured \(enter to replace\)"/);
   assert.doesNotMatch(appSource, /"OpenAI key"/);
+});
+
+test("frontend exposes xAI agent and transcription settings", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /const XAI_AGENT_MODELS = \[/);
+  assert.match(appSource, /React\.createElement\("option", \{ value: "xai" \}, "xAI"\)/);
+  assert.match(appSource, /settings\.agent\.xai\.model/);
+  assert.match(appSource, /settings\.transcription\.xai\.language/);
+  assert.match(appSource, /hasXAIKey/);
+});
+
+test("frontend exposes transcript latency settings in the status panel", () => {
+  const appSource = readFileSync(path.join(rootDir, "public", "app.js"), "utf8");
+
+  assert.match(appSource, /label: "Latency"/);
+  assert.match(appSource, /function LatencyEditor/);
+  assert.match(appSource, /settings\.latency/);
+  assert.match(appSource, /"STT timeout \(ms\)"/);
+  assert.match(appSource, /"Debounce \(ms\)"/);
+  assert.match(appSource, /"Max wait \(ms\)"/);
+  assert.match(appSource, /transcriptTurnDebounceMs: clampNumber/);
+  assert.match(appSource, /transcriptTurnMaxWaitMs: clampNumber/);
+  assert.match(appSource, /smartTurnTimeoutMs: clampNumber/);
 });

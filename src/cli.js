@@ -34,7 +34,7 @@ async function main() {
     agentProvider = resolveAgentProviderFromSettings({ settings, env: process.env });
   } catch (error) {
     console.error(`Whiteboard agent is not configured: ${error.message}`);
-    console.error("Open the app and configure the agent in the status panel, or set OPENAI_API_KEY / OLLAMA_MODEL in your shell.");
+    console.error("Open the app and configure the agent in the status panel, or set OPENAI_API_KEY / XAI_API_KEY / OLLAMA_MODEL in your shell.");
     console.error(`Settings file: ${SETTINGS_PATH}`);
     process.exitCode = 1;
     return;
@@ -43,6 +43,13 @@ async function main() {
   if (settings.transcription.provider === "openai" && !(settings.apiKeys?.openai || process.env.OPENAI_API_KEY)) {
     console.error("OpenAI transcription is selected but no API key is configured.");
     console.error("Open the app and add the key in the STT engine row, or set OPENAI_API_KEY in your shell.");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (settings.transcription.provider === "xai" && !(settings.apiKeys?.xai || process.env.XAI_API_KEY)) {
+    console.error("xAI transcription is selected but no API key is configured.");
+    console.error("Open the app and add the key in the STT engine row, or set XAI_API_KEY in your shell.");
     process.exitCode = 1;
     return;
   }
@@ -78,6 +85,16 @@ Environment:
   OPENAI_MODEL             Seeds the OpenAI agent model on first run
   OPENAI_BASE_URL          Seeds the OpenAI agent API base URL on first run
   OPENAI_REASONING_EFFORT  Seeds reasoning effort on first run (none, low, medium, high, xhigh)
+  XAI_API_KEY              Seeds the xAI key for both agent and streaming STT
+  XAI_MODEL                Seeds the xAI agent model on first run
+  XAI_BASE_URL             Seeds the xAI agent API base URL on first run
+  XAI_STT_LANGUAGE         Seeds the xAI STT language code. Default: en
+  XAI_STT_SMART_TURN_TIMEOUT_MS
+                           Seeds xAI STT end-of-turn timeout. Default: 1200
+  AUTOPRESO_TRANSCRIPT_TURN_DEBOUNCE_MS
+                           Seeds transcript-to-agent debounce. Default: 250
+  AUTOPRESO_TRANSCRIPT_TURN_MAX_WAIT_MS
+                           Seeds transcript-to-agent max wait. Default: 1200
   CODEX_HOME               Codex CLI home directory. Default: ~/.codex
   CODEX_MODEL              Seeds the Codex model on first run
   CODEX_BASE_URL           Seeds the Codex backend URL on first run

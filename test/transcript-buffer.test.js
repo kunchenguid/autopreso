@@ -92,6 +92,83 @@ test("queue idle() force-flushes a not-ready buffer so it always terminates", as
   assert.deepEqual(turns, ["uh\num"]);
 });
 
+test("queue force-flushes a not-ready buffer after max wait", async () => {
+  const turns = [];
+  const queue = createTranscriptTurnQueue({
+    runTurn: async (text) => {
+      turns.push(text);
+    },
+    debounceMs: 10,
+    maxWaitMs: 30,
+    isReady: () => false,
+  });
+
+  queue.enqueue("incomplete fragment");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await queue.idle();
+
+  assert.deepEqual(turns, ["incomplete fragment"]);
+});
+
+test("queue configure updates pending debounce timing", async () => {
+  const turns = [];
+  const queue = createTranscriptTurnQueue({
+    runTurn: async (text) => {
+      turns.push(text);
+    },
+    debounceMs: 1000,
+  });
+
+  queue.enqueue("ready now");
+  queue.configure({ debounceMs: 0 });
+  await queue.idle();
+
+  assert.deepEqual(turns, ["ready now"]);
+});
+
+test("queue configure updates pending max wait timing", async () => {
+  const turns = [];
+  const queue = createTranscriptTurnQueue({
+    runTurn: async (text) => {
+      turns.push(text);
+    },
+    debounceMs: 10,
+    maxWaitMs: 1000,
+    isReady: () => false,
+  });
+
+  queue.enqueue("short fragment");
+  queue.configure({ maxWaitMs: 20 });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await queue.idle();
+
+  assert.deepEqual(turns, ["short fragment"]);
+});
+
+test("queue clear drops pending and buffered transcript chunks", async () => {
+  const turns = [];
+  let releaseFirstTurn = (..._args) => {};
+  const firstTurnDone = new Promise((resolve) => {
+    releaseFirstTurn = resolve;
+  });
+  const queue = createTranscriptTurnQueue({
+    runTurn: async (text) => {
+      turns.push(text);
+      if (text === "first") await firstTurnDone;
+    },
+    debounceMs: 0,
+  });
+
+  queue.enqueue("first");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  queue.enqueue("second");
+  queue.clear();
+  releaseFirstTurn();
+  await queue.idle();
+
+  assert.deepEqual(turns, ["first"]);
+});
+
 test("queue buffers chunks that arrive during a running turn into one follow-up turn", async () => {
   const turns = [];
   let releaseFirstTurn = (..._args) => {};
