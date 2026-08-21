@@ -42,18 +42,20 @@ function extractRunScript(yaml) {
   return body.join("\n");
 }
 
+const completedRequiredSteps = [
+  { step: "review", status: "completed" },
+  { step: "test", status: "completed" },
+  { step: "document", status: "completed" },
+];
+
 function attestationComment({
   headSha = "0123456789abcdef0123456789abcdef01234567",
-  steps = [
-    { step: "review", status: "completed" },
-    { step: "test", status: "completed" },
-    { step: "document", status: "completed" },
-  ],
+  steps = completedRequiredSteps,
 } = {}) {
   return `${ATTESTATION_PREFIX} ${JSON.stringify({ head_sha: headSha, steps })} -->`;
 }
 
-function pipelineBody({ steps, extra = "" } = {}) {
+function pipelineBody({ steps = completedRequiredSteps, extra = "" } = {}) {
   return [
     "## Pipeline",
     "",
