@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createWhiteboardSession, isTrivialTranscript } from "../src/whiteboard-session.js";
+import { createWhiteboardSession, isReadyTranscriptTurn, isTrivialTranscript } from "../src/whiteboard-session.js";
 
 test("isTrivialTranscript skips fillers and ultra-short utterances", () => {
   // Fillers
@@ -25,6 +25,14 @@ test("isTrivialTranscript keeps real content", () => {
   assert.equal(isTrivialTranscript("Yes, the answer is 42"), false, "filler word in real sentence is fine");
   assert.equal(isTrivialTranscript("Stop the recording"), false);
   assert.equal(isTrivialTranscript("Done!"), false, "single 4-letter command is real content");
+});
+
+test("isReadyTranscriptTurn holds short incomplete fragments but keeps direct commands responsive", () => {
+  assert.equal(isReadyTranscriptTurn("de conférence en"), false);
+  assert.equal(isReadyTranscriptTurn("Avec des informations beaucoup"), false);
+  assert.equal(isReadyTranscriptTurn("Concernant la cybersécurité, il y a deux risques."), true);
+  assert.equal(isReadyTranscriptTurn("Aujourd'hui nous allons parler de cybersécurité et de productivité"), true);
+  assert.equal(isReadyTranscriptTurn("Dessine trois bulles"), true);
 });
 
 test("session token starts active and bumps to a new active token on endSession()", () => {
@@ -87,29 +95,49 @@ test("runTurn skips runAgent when the session ended while waiting on warmup", as
 });
 
 test("whiteboard session buffers transcript chunks that arrive while the agent is mid-turn", async () => {
-  // The queue runs without its own debounce now (delta-quiet upstream owns
-  // turn boundaries), so the first chunk fires immediately. While that turn
-  // is in flight, subsequent chunks buffer and concatenate into the next
-  // turn rather than serializing into N separate agent calls.
+  // Disable debounce for this focused buffering test. While the first turn is
+  // in flight, subsequent chunks buffer and concatenate into the next turn
+  // rather than serializing into N separate agent calls.
   const turns = [];
   const session = createWhiteboardSession({
-    options: {},
+    options: { transcriptTurnDebounceMs: 0 },
     wss: { clients: new Set() },
     runAgent: async ({ transcript }) => {
       turns.push(transcript);
       // Hold the first turn long enough for the next two chunks to land.
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (transcript === "first point.") {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
     },
   });
   session.mode = "live";
 
-  session.queueTranscript("first");
-  session.queueTranscript("second");
-  session.queueTranscript("third");
+  session.queueTranscript("first point.");
+  session.queueTranscript("second point.");
+  session.queueTranscript("third point.");
 
   await session.idle();
 
-  assert.deepEqual(turns, ["first", "second\nthird"]);
+  assert.deepEqual(turns, ["first point.", "second point.\nthird point."]);
+});
+
+test("whiteboard session coalesces short incomplete transcript fragments", async () => {
+  const turns = [];
+  const session = createWhiteboardSession({
+    options: { transcriptTurnDebounceMs: 10, transcriptTurnMaxWaitMs: 200 },
+    wss: { clients: new Set() },
+    runAgent: async ({ transcript }) => turns.push(transcript),
+  });
+  session.mode = "live";
+
+  session.queueTranscript("de conférence en");
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.deepEqual(turns, []);
+
+  session.queueTranscript("français sur l'intelligence artificielle.");
+  await session.idle();
+
+  assert.deepEqual(turns, ["de conférence en\nfrançais sur l'intelligence artificielle."]);
 });
 
 test("whiteboard session stores latest browser screenshot for later agent turns", async () => {

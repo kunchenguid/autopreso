@@ -131,7 +131,7 @@ test("websocket screenshot messages update agent visual context", async () => {
   }
 });
 
-test("websocket stop makes synchronous transcript flush stale", async () => {
+test("websocket stop lets the final transcript flush update the whiteboard before ending", async () => {
   let generateCalled = false;
   let ws;
   let resolveStopCalled;
@@ -152,6 +152,7 @@ test("websocket stop makes synchronous transcript flush stale", async () => {
       },
       close: () => {},
     }),
+    stopDrainMs: 0,
     generateTextFn: async () => {
       generateCalled = true;
       return { text: "DONE", finishReason: "stop" };
@@ -179,7 +180,7 @@ test("websocket stop makes synchronous transcript flush stale", async () => {
       new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for transcription stop.")), 2000)),
     ]);
     await state.idle();
-    assert.equal(generateCalled, false);
+    assert.equal(generateCalled, true);
     ws.close();
   } finally {
     ws?.close();
@@ -365,6 +366,49 @@ test("runWhiteboardAgent passes OpenAI reasoning effort provider option", async 
       assert.deepEqual(providerOptions, {
         openai: { reasoningEffort: "low" },
       });
+    },
+  });
+});
+
+test("runWhiteboardAgent disables parallel tool calls for xAI", async () => {
+  await runWhiteboardAgent({
+    transcript: "hello",
+    state: { elements: [], agentHistory: [] },
+    wss: { clients: new Set() },
+    options: {
+      agentProvider: {
+        provider: "xai",
+        model: "grok-4.3",
+        baseURL: "https://api.x.ai/v1",
+        apiKey: "test",
+      },
+    },
+    generateTextFn: async ({ providerOptions }) => {
+      assert.deepEqual(providerOptions, {
+        xai: { parallelToolCalls: false },
+      });
+    },
+  });
+});
+
+test("runWhiteboardAgent forces xAI to create an initial visual on substantive empty boards", async () => {
+  await runWhiteboardAgent({
+    transcript: "Nous parlons d'IA, de cybersécurité et de productivité.",
+    state: { elements: [], agentHistory: [] },
+    wss: { clients: new Set() },
+    options: {
+      agentProvider: {
+        provider: "xai",
+        model: "grok-4.3",
+        baseURL: "https://api.x.ai/v1",
+        apiKey: "test",
+      },
+    },
+    generateTextFn: async ({ prepareStep }) => {
+      assert.deepEqual(prepareStep({ stepNumber: 0 }), {
+        toolChoice: { type: "tool", toolName: "whiteboard_apply" },
+      });
+      assert.equal(prepareStep({ stepNumber: 1 }), undefined);
     },
   });
 });

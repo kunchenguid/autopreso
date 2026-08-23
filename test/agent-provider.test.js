@@ -45,3 +45,20 @@ test("createWhiteboardAgentModel uses the configured OpenAI base URL", () => {
     "https://gateway.example.test/v1/responses",
   );
 });
+
+test("createWhiteboardAgentModel uses xAI chat completions with the configured base URL", () => {
+  const model = createWhiteboardAgentModel({
+    provider: "xai",
+    model: "grok-4.3",
+    baseURL: "https://api.x.ai/v1",
+    apiKey: "xai-test",
+  });
+
+  assert.equal(model.provider, "xai.chat");
+  assert.equal(model.modelId, "grok-4.3");
+  const config = Reflect.get(model, "config");
+  assert.equal(
+    config.url({ path: "/chat/completions" }).toString(),
+    "https://api.x.ai/v1/chat/completions",
+  );
+});

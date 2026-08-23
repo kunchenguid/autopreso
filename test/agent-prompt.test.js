@@ -150,6 +150,20 @@ test("whiteboard agent canvas-task message references the active-talking-point v
   assert.match(messages[1].content, /active talking point/);
 });
 
+test("whiteboard agent canvas-task message forces an initial visual on substantive empty boards", () => {
+  const messages = buildWhiteboardAgentMessages({
+    agentHistory: [],
+    elements: [],
+    transcript: "Nous parlons d'IA, de cybersécurité et de productivité.",
+  });
+
+  assert.equal(messages[1].role, "user");
+  assert.equal(typeof messages[1].content, "string");
+  assert.match(messages[1].content, /The whiteboard is empty/);
+  assert.match(messages[1].content, /MUST create the first visual structure/);
+  assert.match(messages[1].content, /Do not answer DONE on an empty whiteboard/);
+});
+
 test("whiteboard agent canvas-task message includes the latest screenshot when one is present", () => {
   const messages = buildWhiteboardAgentMessages({
     agentHistory: [],

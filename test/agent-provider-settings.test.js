@@ -11,10 +11,11 @@ function settingsBase() {
     agent: {
       provider: "openai",
       openai: { model: "gpt-5.5", reasoningEffort: "low", baseURL: "https://api.openai.com/v1" },
+      xai: { model: "grok-4.3", baseURL: "https://api.x.ai/v1" },
       codex: { model: "gpt-5.5-fast", baseURL: "https://chatgpt.com/backend-api/codex" },
       ollama: { model: "", baseURL: "http://localhost:11434/v1" },
     },
-    apiKeys: { openai: "" },
+    apiKeys: { openai: "", xai: "" },
   };
 }
 
@@ -67,6 +68,41 @@ test("resolveAgentProviderFromSettings throws when OpenAI provider has no key fr
   assert.throws(
     () => resolveAgentProviderFromSettings({ settings, env: {} }),
     /OpenAI API key/,
+  );
+});
+
+test("resolveAgentProviderFromSettings returns xAI provider from settings + key", () => {
+  const settings = settingsBase();
+  settings.agent.provider = "xai";
+  settings.apiKeys.xai = "xai-from-settings";
+  settings.agent.xai.model = "grok-build-0.1";
+  settings.agent.xai.baseURL = "https://gateway.xai.example.test/v1/";
+
+  assert.deepEqual(resolveAgentProviderFromSettings({ settings, env: {} }), {
+    provider: "xai",
+    model: "grok-build-0.1",
+    apiKey: "xai-from-settings",
+    baseURL: "https://gateway.xai.example.test/v1",
+  });
+});
+
+test("resolveAgentProviderFromSettings falls back to env XAI_API_KEY", () => {
+  const settings = settingsBase();
+  settings.agent.provider = "xai";
+
+  assert.equal(
+    resolveAgentProviderFromSettings({ settings, env: { XAI_API_KEY: "xai-env" } }).apiKey,
+    "xai-env",
+  );
+});
+
+test("resolveAgentProviderFromSettings throws when xAI provider has no key from any source", () => {
+  const settings = settingsBase();
+  settings.agent.provider = "xai";
+
+  assert.throws(
+    () => resolveAgentProviderFromSettings({ settings, env: {} }),
+    /xAI API key/,
   );
 });
 

@@ -21,6 +21,7 @@
     "ai-agent",
     "moonshine",
     "openai",
+    "xai",
     "transcription",
     "cli"
   ],

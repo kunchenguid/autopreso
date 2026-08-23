@@ -556,7 +556,8 @@ button:disabled {
 
 .editor select,
 .editor input[type="text"],
-.editor input[type="password"] {
+.editor input[type="password"],
+.editor input[type="number"] {
   font: inherit;
   padding: 7px 10px;
   border: 1px solid #dedbd2;

@@ -4,8 +4,10 @@ import { DEFAULT_CODEX_BASE_URL, createCodexFetch, readCodexCliAuthSync } from "
 
 const DEFAULT_OPENAI_AGENT_MODEL = "gpt-5.5";
 const DEFAULT_CODEX_AGENT_MODEL = "gpt-5.5-fast";
+const DEFAULT_XAI_AGENT_MODEL = "grok-4.3";
 const DEFAULT_OPENAI_REASONING_EFFORT = "low";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_XAI_BASE_URL = "https://api.x.ai/v1";
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
 const OPENAI_REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh"]);
 
@@ -46,6 +48,17 @@ export function resolveAgentProviderFromSettings({ settings, env = process.env }
     };
   }
 
+  if (provider === "xai") {
+    const apiKey = (settings.apiKeys?.xai ?? "").trim() || cleanEnvValue(env.XAI_API_KEY);
+    if (!apiKey) throw new Error("xAI API key is not configured. Add it in the agent settings.");
+    return {
+      provider: "xai",
+      model: settings.agent.xai.model || DEFAULT_XAI_AGENT_MODEL,
+      apiKey,
+      baseURL: withoutTrailingSlash(cleanEnvValue(settings.agent.xai.baseURL) ?? DEFAULT_XAI_BASE_URL),
+    };
+  }
+
   const apiKey = (settings.apiKeys?.openai ?? "").trim() || cleanEnvValue(env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("OpenAI API key is not configured. Add it in the agent settings.");
   return {
@@ -83,6 +96,15 @@ export function createWhiteboardAgentModel(agentProvider) {
       fetch: createCodexFetch(),
     });
     return codex.responses(agentProvider.model);
+  }
+
+  if (agentProvider.provider === "xai") {
+    const xai = createOpenAI({
+      name: "xai",
+      baseURL: agentProvider.baseURL,
+      apiKey: agentProvider.apiKey,
+    });
+    return xai.chat(agentProvider.model);
   }
 
   const openai = createOpenAI({

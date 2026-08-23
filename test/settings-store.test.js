@@ -25,9 +25,16 @@ test("createSettingsStore seeds settings from environment on first run", async (
     filePath: await tempPath(),
     env: {
       OPENAI_API_KEY: "sk-env",
+      XAI_API_KEY: "xai-env",
       OPENAI_MODEL: "gpt-5-pro",
       OPENAI_BASE_URL: "https://gateway.example.test/v1",
       OPENAI_REASONING_EFFORT: "high",
+      XAI_MODEL: "grok-build-0.1",
+      XAI_BASE_URL: "https://gateway.xai.example.test/v1",
+      XAI_STT_LANGUAGE: "fr",
+      XAI_STT_SMART_TURN_TIMEOUT_MS: "900",
+      AUTOPRESO_TRANSCRIPT_TURN_DEBOUNCE_MS: "150",
+      AUTOPRESO_TRANSCRIPT_TURN_MAX_WAIT_MS: "800",
       OLLAMA_MODEL: "llama3",
       OLLAMA_BASE_URL: "http://localhost:1234/v1",
     },
@@ -35,9 +42,16 @@ test("createSettingsStore seeds settings from environment on first run", async (
   });
   const settings = await store.load();
   assert.equal(settings.apiKeys.openai, "sk-env");
+  assert.equal(settings.apiKeys.xai, "xai-env");
   assert.equal(settings.agent.openai.model, "gpt-5-pro");
   assert.equal(settings.agent.openai.baseURL, "https://gateway.example.test/v1");
   assert.equal(settings.agent.openai.reasoningEffort, "high");
+  assert.equal(settings.agent.xai.model, "grok-build-0.1");
+  assert.equal(settings.agent.xai.baseURL, "https://gateway.xai.example.test/v1");
+  assert.equal(settings.transcription.xai.language, "fr");
+  assert.equal(settings.transcription.xai.smartTurnTimeoutMs, 900);
+  assert.equal(settings.latency.transcriptTurnDebounceMs, 150);
+  assert.equal(settings.latency.transcriptTurnMaxWaitMs, 800);
   assert.equal(settings.agent.ollama.model, "llama3");
   assert.equal(settings.agent.ollama.baseURL, "http://localhost:1234/v1");
 });
@@ -61,6 +75,17 @@ test("createSettingsStore picks openai agent and transcription when key is in en
   const settings = await store.load();
   assert.equal(settings.agent.provider, "openai");
   assert.equal(settings.transcription.provider, "openai");
+});
+
+test("createSettingsStore picks xAI agent and transcription when only XAI_API_KEY is in env", async () => {
+  const store = createSettingsStore({
+    filePath: await tempPath(),
+    env: { XAI_API_KEY: "xai-env" },
+    readCodexAuth: noCodexAuth,
+  });
+  const settings = await store.load();
+  assert.equal(settings.agent.provider, "xai");
+  assert.equal(settings.transcription.provider, "xai");
 });
 
 test("createSettingsStore prefers Codex agent whenever Codex CLI auth is available", async () => {
@@ -134,6 +159,20 @@ test("createSettingsStore.getSanitized strips api keys and reports hasOpenAIKey"
   assert.equal(sanitized.apiKeys, undefined);
   assert.equal(sanitized.hasOpenAIKey, true);
   assert.equal(sanitized.agent.provider, "openai");
+});
+
+test("createSettingsStore.getSanitized reports xAI key availability without exposing it", async () => {
+  const store = createSettingsStore({
+    filePath: await tempPath(),
+    env: { XAI_API_KEY: "xai-env" },
+    readCodexAuth: noCodexAuth,
+  });
+  await store.load();
+  const sanitized = await store.getSanitized();
+  assert.equal(sanitized.apiKeys, undefined);
+  assert.equal(sanitized.hasXAIKey, true);
+  assert.equal(sanitized.agent.provider, "xai");
+  assert.equal(sanitized.transcription.provider, "xai");
 });
 
 test("createSettingsStore.getSanitized reports false when no openai key is set", async () => {

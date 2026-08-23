@@ -28,6 +28,17 @@ test("computeAgentCost returns priced=false for unknown OpenAI model", () => {
   assert.equal(cost.cost, 0);
 });
 
+test("computeAgentCost prices known xAI models", () => {
+  // grok-4.3: $1.25 input, $0.20 cached input, $2.50 output per 1M tokens.
+  const cost = computeAgentCost({
+    provider: "xai",
+    model: "grok-4.3",
+    usage: { input: 10_000, cached: 2_000, output: 1_000, reasoning: 0 },
+  });
+  assert.ok(cost.priced);
+  assert.equal(cost.cost.toFixed(6), ((8000 * 1.25 + 2000 * 0.20 + 1000 * 2.50) / 1_000_000).toFixed(6));
+});
+
 test("computeAgentCost returns priced=false for ollama (local)", () => {
   const cost = computeAgentCost({
     provider: "ollama",
@@ -59,6 +70,17 @@ test("computeTranscriptionCost prices per minute for OpenAI models", () => {
   });
   assert.ok(cost.priced);
   assert.equal(cost.cost.toFixed(6), (0.006 * 2).toFixed(6));
+});
+
+test("computeTranscriptionCost prices xAI streaming STT", () => {
+  // xAI streaming STT: $0.20 / hour.
+  const cost = computeTranscriptionCost({
+    provider: "xai",
+    model: "streaming",
+    seconds: 3600,
+  });
+  assert.ok(cost.priced);
+  assert.equal(cost.cost.toFixed(6), "0.200000");
 });
 
 test("computeTranscriptionCost returns priced=false for moonshine (local)", () => {

@@ -2,13 +2,27 @@ import { WebSocket } from "ws";
 
 import { createSessionCostTracker } from "./session-cost.js";
 import { createTranscriptTurnQueue } from "./transcript-turn-queue.js";
+import {
+  DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS,
+  DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS,
+  normalizeTranscriptLatencySettings,
+} from "./transcript-latency.js";
+
+export {
+  DEFAULT_TRANSCRIPT_TURN_DEBOUNCE_MS,
+  DEFAULT_TRANSCRIPT_TURN_MAX_WAIT_MS,
+} from "./transcript-latency.js";
 
 const FILLER_WORDS = new Set([
   "uh", "uhh", "uhhh", "um", "umm", "ummm", "ah", "ahh", "er", "erm",
   "hmm", "hm", "huh", "mm", "mhm",
   "yeah", "yep", "yup", "yes", "ok", "okay", "right", "alright",
   "so", "well", "like",
+  "euh", "heu", "ben", "bah", "bon",
 ]);
+
+const TERMINAL_TURN_RE = /[.!?;:]["')\]]*$/u;
+const DIRECT_CANVAS_REQUEST_RE = /\b(dessine|dessiner|ajoute|ajouter|crée|creer|créer|trace|montre|zoome|zoom|centre|déplace|deplace|supprime|efface|mets|met|scroll)\b/iu;
 
 export function isTrivialTranscript(text) {
   if (typeof text !== "string") return true;
@@ -27,12 +41,27 @@ export function isTrivialTranscript(text) {
   return false;
 }
 
+export function isReadyTranscriptTurn(text) {
+  if (isTrivialTranscript(text)) return false;
+  const trimmed = String(text ?? "").trim();
+  if (TERMINAL_TURN_RE.test(trimmed)) return true;
+  if (DIRECT_CANVAS_REQUEST_RE.test(trimmed)) return true;
+  const words = trimmed
+    .replace(/[.,!?;:'"()\-]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
+  if (words.length >= 8) return true;
+  if (trimmed.includes("\n") && words.length >= 6) return true;
+  return false;
+}
+
 // Default backoff between warmup attempts (after attempt N completes, wait
 // delays[N-1] ms before the next). Total budget with 8 attempts: ~120s.
 const DEFAULT_WARMUP_DELAYS = [2000, 4000, 8000, 16000, 30000, 30000, 30000];
 const DEFAULT_WARMUP_MAX_ATTEMPTS = 8;
 
 export function createWhiteboardSession({ options, wss, runAgent }) {
+  const initialLatency = normalizeTranscriptLatencySettings(options);
   const state = {
     mode: "staging",
     elements: seedElements(),
@@ -61,6 +90,7 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
     // late delta flush) becomes a no-op for state mutation. Cost tracking
     // does NOT consult this - we record what we paid for regardless.
     session: { id: 0, active: true },
+    transcriptTurnTiming: initialLatency,
   };
 
   let warmupCancelled = false;
@@ -74,16 +104,15 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
   }
 
   const queue = createTranscriptTurnQueue({
-    // No queue-level debounce: turn boundaries are decided upstream by the
-    // transcription provider (delta-quiet for OpenAI; per-chunk commits for
-    // Moonshine), so by the time queueTranscript fires, the chunk represents
-    // a complete utterance and should run immediately.
-    debounceMs: 0,
-    // A turn is "ready" only when the accumulated buffer has at least one
-    // substantive (non-filler) word. Pure fillers ("uh", "uh um") keep
-    // accumulating until the speaker says something real, then fire as one
-    // combined turn ("uh\num\nOpenAI just released...").
-    isReady: (text) => !isTrivialTranscript(text),
+    // A short queue-level debounce coalesces bursts of small STT commits into
+    // one agent turn. The max-wait keeps terse standalone turns from getting
+    // stuck if the speaker pauses.
+    debounceMs: initialLatency.transcriptTurnDebounceMs,
+    maxWaitMs: initialLatency.transcriptTurnMaxWaitMs,
+    // A turn is "ready" once it looks complete enough for the whiteboard
+    // agent. Tiny unpunctuated fragments keep accumulating briefly instead of
+    // triggering expensive DONE-only model calls.
+    isReady: isReadyTranscriptTurn,
     runTurn: async (transcript) => {
       if (state.mode !== "live") return;
       // Capture the session at the moment the turn begins. If endSession()
@@ -114,7 +143,17 @@ export function createWhiteboardSession({ options, wss, runAgent }) {
 
   state.queueTranscript = (text) => queue.enqueue(text);
   state.idle = () => queue.idle();
+  state.setTranscriptTurnTiming = (settings = {}) => {
+    const timing = normalizeTranscriptLatencySettings(settings);
+    state.transcriptTurnTiming = timing;
+    queue.configure({
+      debounceMs: timing.transcriptTurnDebounceMs,
+      maxWaitMs: timing.transcriptTurnMaxWaitMs,
+    });
+    return timing;
+  };
   state.endSession = () => {
+    queue.clear();
     state.session.active = false;
     state.session = { id: state.session.id + 1, active: true };
   };
