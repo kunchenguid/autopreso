@@ -26,11 +26,20 @@ import { applyWhiteboardEditOperations, formatLineNumberedWhiteboard } from "./w
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
+import { randomBytes } from "node:crypto";
+
 export const DEFAULT_AGENT_TIMEOUT_MS = 90_000;
 
 export async function startServer(options) {
   const app = express();
+  const authToken = randomBytes(24).toString("hex");
   app.use(express.json({ limit: "1mb" }));
+  // Issue a per-process session cookie so only clients that have loaded the
+  // app's UI (and thus received this cookie) can call the API endpoints.
+  app.use((req, res, next) => {
+    res.cookie("apAuthToken", authToken, { httpOnly: false, sameSite: "strict" });
+    next();
+  });
   app.use(express.static(PUBLIC_DIR));
 
   const httpServer = createHttpServer(app);
@@ -54,6 +63,13 @@ export async function startServer(options) {
     wss,
     queueTranscript: (transcript) => state.queueTranscript(transcript),
     state,
+  });
+
+  app.use("/api", (req, res, next) => {
+    const cookies = req.headers.cookie ?? "";
+    const hasValidToken = cookies.split(";").some((cookie) => cookie.trim() === `apAuthToken=${authToken}`);
+    if (!hasValidToken) return res.status(401).json({ error: "Unauthorized" });
+    next();
   });
 
   app.get("/api/config", async (_req, res) => {
