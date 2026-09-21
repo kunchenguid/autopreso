@@ -135,11 +135,14 @@ test("no-mistakes workflow preserves its pull request policy", () => {
   );
   assert.deepEqual(Object.keys(workflow.on), ["pull_request"]);
   assert.deepEqual(workflow.on.pull_request, {
-    types: ["opened", "edited", "reopened"],
+    types: ["opened", "edited", "synchronize", "reopened"],
     branches: ["main"],
     "paths-ignore": expectedPathsIgnore,
   });
-  assert.deepEqual(workflow.permissions, { contents: "read" });
+  assert.deepEqual(workflow.permissions, {
+    contents: "read",
+    "pull-requests": "read",
+  });
   assert.deepEqual(workflow.concurrency, {
     group: "no-mistakes-required-${{ github.event.pull_request.number }}-${{ (github.event.action == 'opened' || github.event.action == 'edited') && github.run_id || 'head-change' }}",
     "cancel-in-progress": true,
@@ -155,7 +158,7 @@ test("no-mistakes workflow delegates to the pinned shared action", () => {
     steps: [
       {
         name: "Verify no-mistakes signature and pipeline attestation in PR body",
-        uses: "kunchenguid/no-mistakes/.github/actions/require-no-mistakes@32d396ac0f29135daf7fcb9964aba9d5f4e796d6",
+        uses: "kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970",
       },
     ],
   });
