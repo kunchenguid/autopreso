@@ -159,6 +159,9 @@ test("no-mistakes workflow delegates to the pinned shared action", () => {
       {
         name: "Verify no-mistakes signature and pipeline attestation in PR body",
         uses: "kunchenguid/no-mistakes/.github/actions/require-no-mistakes@f6441c96c352a18b9cadcaef6b6c7017e9ac3970",
+        with: {
+          "exempt-authors": "kunchenguid",
+        },
       },
     ],
   });
