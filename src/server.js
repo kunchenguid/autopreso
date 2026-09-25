@@ -69,7 +69,18 @@ export async function startServer(options) {
     res.json(await options.settingsStore.getSanitized());
   });
 
-  app.post("/api/session/reset", (_req, res) => {
+  // Sensitive state-mutating endpoints are reachable by any origin unless we
+  // check that the request actually came from this app (not a third-party
+  // page instructing a victim's browser to hit our loopback-bound server).
+  const requireSameOrigin = (req, res, next) => {
+    const origin = req.get("origin");
+    if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) {
+      return res.status(403).json({ error: "Forbidden: cross-origin request rejected." });
+    }
+    next();
+  };
+
+  app.post("/api/session/reset", requireSameOrigin, (_req, res) => {
     state.reset();
     transcription.setSessionContext({ keywords: [] });
     broadcast(wss, { type: "whiteboard:update", elements: state.elements });
@@ -77,7 +88,7 @@ export async function startServer(options) {
     res.json({ ok: true });
   });
 
-  app.post("/api/preso/start", async (req, res) => {
+  app.post("/api/preso/start", requireSameOrigin, async (req, res) => {
     const { stagingElements, stagingScreenshot } = req.body ?? {};
     if (!Array.isArray(stagingElements)) {
       return res.status(400).json({ error: "stagingElements (array) is required." });
